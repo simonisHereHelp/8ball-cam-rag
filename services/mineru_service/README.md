@@ -90,6 +90,8 @@ Notes:
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
+On Windows PowerShell, if you wrap `uvicorn` with `Tee-Object`, you may see a red `NativeCommandError` even when startup succeeds. `uvicorn` writes some normal startup logs to stderr, and PowerShell can surface those as error records. The repo-root [`launch-mineru.ps1`](C:/001_workspace/8ball-cam-rag/launch-mineru.ps1) launcher avoids that by routing stderr through `cmd.exe` before teeing to the log file.
+
 Then your Vercel env can point to:
 
 ```env

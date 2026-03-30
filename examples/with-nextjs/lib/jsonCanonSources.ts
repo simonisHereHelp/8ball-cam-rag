@@ -1,18 +1,42 @@
+import fs from "fs";
 import path from "path";
 
-const JSON_CANON_BASE_PATH =
-  process.env.JSON_CANON_BASE_PATH || path.join(process.cwd(), "json_canon");
+const jsonCanonBaseCandidates = () => {
+  const explicitBase = process.env.JSON_CANON_BASE_PATH?.trim();
+  const candidates = [
+    explicitBase,
+    path.join(process.cwd(), "json_canon"),
+    path.resolve(process.cwd(), "..", "json_canon"),
+    path.resolve(process.cwd(), "..", "..", "json_canon"),
+  ].filter((value): value is string => Boolean(value));
 
-const buildLocalPath = (fileName: string) => path.join(JSON_CANON_BASE_PATH, fileName);
+  return Array.from(new Set(candidates));
+};
+
+const buildLocalPath = (...fileNames: string[]) => {
+  const bases = jsonCanonBaseCandidates();
+
+  for (const base of bases) {
+    for (const fileName of fileNames) {
+      const candidate = path.join(base, fileName);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  const fallbackBase = bases[0] || path.join(process.cwd(), "json_canon");
+  return path.join(fallbackBase, fileNames[0]);
+};
 
 const resolveJsonSource = (
   envPath: string | undefined,
   envId: string | undefined,
-  localFileName: string
+  ...localFileNames: string[]
 ) => {
   if (envPath) return envPath;
   if (envId) return envId;
-  return buildLocalPath(localFileName);
+  return buildLocalPath(...localFileNames);
 };
 
 export const PROMPT_SUMMARY_SOURCE = resolveJsonSource(
@@ -54,6 +78,7 @@ export const PROMPT_DESIGNATED_SUBFOLDER_SOURCE = resolveJsonSource(
 export const DRIVE_ACTIVE_SUBFOLDER_SOURCE = resolveJsonSource(
   process.env.DRIVE_ACTIVE_SUBFOLDER_PATH,
   process.env.DRIVE_ACTIVE_SUBFOLDER_ID,
+  "drive_active_subfolder_list.json",
   "drive_active_subfolders.json",
 );
 
