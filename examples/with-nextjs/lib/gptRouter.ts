@@ -60,13 +60,14 @@ export class GPT_Router {
     promptFileID: string,
     options: {
       bibleData?: any;
+      taxonomyData?: any;
       summary?: string;
       wordTarget?: number;
     }
   ): Promise<string> {
     const config = await this._fetchFile(promptFileID);
     let userPrompt = config.user;
-    const { bibleData, summary, wordTarget } = options;
+    const { bibleData, taxonomyData, summary, wordTarget } = options;
 
     // 1. 處理 Bible 數據替換 (用於 Summarize 階段)
     if (bibleData) {
@@ -90,6 +91,45 @@ export class GPT_Router {
         .replace("{{TYPE_OF_DOC}}", JSON.stringify(typeNames))
         .replace("{{ACTION}}", JSON.stringify(actionNames));
     }
+
+    if (taxonomyData) {
+      const subfolders = Array.isArray(taxonomyData.subfolders) ? taxonomyData.subfolders : [];
+      const subjectCategories = subfolders
+        .map((entry: any) => entry?.topic)
+        .filter((topic: unknown): topic is string => typeof topic === "string" && topic.trim().length > 0);
+
+      const docClassOptions = Array.from(
+        new Set(
+          subfolders.flatMap((entry: any) =>
+            Array.isArray(entry?.doc_classes) ? entry.doc_classes : [],
+          ),
+        ),
+      );
+
+      const actionVerbOptions = Array.from(
+        new Set(
+          subfolders.flatMap((entry: any) =>
+            Array.isArray(entry?.actionVerbs) ? entry.actionVerbs : [],
+          ),
+        ),
+      );
+
+      const subjectRules = subfolders.map((entry: any) => ({
+        subject_category: entry?.topic ?? "",
+        description: entry?.description ?? "",
+        keywords: Array.isArray(entry?.keywords) ? entry.keywords : [],
+        excluded_keywords: Array.isArray(entry?.excluded_keywords) ? entry.excluded_keywords : [],
+        doc_classes: Array.isArray(entry?.doc_classes) ? entry.doc_classes : [],
+        action_in_verbs: Array.isArray(entry?.actionVerbs) ? entry.actionVerbs : [],
+      }));
+
+      userPrompt = userPrompt
+        .replace("{{SUBJECT_CATEGORIES}}", JSON.stringify(subjectCategories))
+        .replace("{{DOC_CLASS_OPTIONS}}", JSON.stringify(docClassOptions))
+        .replace("{{ACTION_VERB_OPTIONS}}", JSON.stringify(actionVerbOptions))
+        .replace("{{SUBJECT_RULES}}", JSON.stringify(subjectRules));
+    }
+
     // 處理摘要替換 (用於 SetName 階段)
     if (summary) {
       userPrompt = userPrompt.replace("{{SUMMARY}}", summary.trim());

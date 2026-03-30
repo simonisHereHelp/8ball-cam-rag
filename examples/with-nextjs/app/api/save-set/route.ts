@@ -53,20 +53,40 @@ function buildMarkdown(params: {
   const images = imageFiles.map((file, idx) => {
     const pageNumber = idx + 1;
     const extension = resolveExtension(file.name, "jpeg");
-    return `![${setName}-p${pageNumber}](./${setName}-p${pageNumber}.${extension})`;
+    return {
+      alt: `page-${pageNumber}`,
+      path: `./${setName}-p${pageNumber}.${extension}`,
+    };
   });
 
-  return `# ${setName}
+  const normalizedSummary = summary.trim();
+  const imageSection = images.map((image) => `![${image.alt}](${image.path})`).join("\n");
+  const hasImageLinks = /!\[[^\]]*\]\(([^)]+)\)/.test(normalizedSummary);
 
-## summary
+  const rewrittenSummary = images.reduce((content, image, index) => {
+    const pageNumber = index + 1;
+    const patterns = [
+      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?\\{\\{setName\\}\\}-p${pageNumber}\\.[^)]+\\)`, "gi"),
+      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?page[-_]?${pageNumber}(?:\\.[^)]+)?\\)`, "gi"),
+      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?p${pageNumber}(?:\\.[^)]+)?\\)`, "gi"),
+      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?images\\/[^)]*page[-_]?${pageNumber}[^)]*\\)`, "gi"),
+    ];
 
-${summary.trim()}
+    return patterns.reduce(
+      (current, pattern) => current.replace(pattern, `![${image.alt}](${image.path})`),
+      content,
+    );
+  }, normalizedSummary);
 
----
+  if (hasImageLinks) {
+    return rewrittenSummary;
+  }
 
-## support
+  return `${rewrittenSummary}
 
-${images.join("\n\n")}
+## Images
+
+${imageSection}
 `;
 }
 
@@ -82,6 +102,7 @@ const ROOT_DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 async function deriveSetNameFromSummary(summary: string): Promise<string> {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const fallbackTitle = "document";
+  const namingInput = summary.trim().slice(0, 4000);
 
   if (!OPENAI_API_KEY) return `${fallbackTitle}-${datePart}`;
 
@@ -90,7 +111,7 @@ async function deriveSetNameFromSummary(summary: string): Promise<string> {
     const systemPrompt = await GPT_Router.getSystemPrompt(PROMPT_ID);
     const userPrompt = await GPT_Router.getUserPrompt(
         PROMPT_ID, { 
-        summary: summary,
+        summary: namingInput,
         wordTarget: 150 // 可選覆蓋
       });
 

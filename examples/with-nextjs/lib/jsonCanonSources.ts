@@ -21,6 +21,18 @@ export const PROMPT_SUMMARY_SOURCE = resolveJsonSource(
   "prompt_summary.json"
 );
 
+export const PROMPT_EXTRACT_SOURCE = resolveJsonSource(
+  process.env.PROMPT_EXTRACT_JSON_PATH,
+  process.env.PROMPT_EXTRACT_JSON_ID,
+  "prompt_extract.json"
+);
+
+export const SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE = resolveJsonSource(
+  process.env.SUBJECT_CAT_DOC_CLASS_ACTION_PATH,
+  process.env.SUBJECT_CAT_DOC_CLASS_ACTION_ID,
+  "subjectCat_docClass_actionVerb.json"
+);
+
 export const PROMPT_ISSUER_CANON_SOURCE = resolveJsonSource(
   process.env.PROMPT_ISSUER_CANON_JSON_PATH,
   process.env.PROMPT_ISSUER_CANON_JSON_ID,

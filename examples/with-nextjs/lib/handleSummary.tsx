@@ -24,38 +24,55 @@ const buildSummaryTemplate = (images: Image[]) => {
           .map((image, index) => {
             const page = index + 1;
             const extension = extensionFromFile(image.file);
-            return `- [ ] ./{{setName}}-p${page}.${extension}`;
+            return `![page-${page}](./{{setName}}-p${page}.${extension})`;
           })
           .join("\n")
-      : "- [ ] ./{{setName}}-p1.jpg";
+      : "![page-1](./{{setName}}-p1.jpg)";
 
-  return `### Draft Summary
-單位：
-類型：
-行動：
-内容摘要：
+  return `# Untitled Document
 
-### Assets
+## Meta
+
+- issuer_name:
+- issuer_alias:
+- date:
+- doc_class:
+- action_in_verb:
+- subject_category:
+- page_count: ${images.length}
+- source_type: scanned_images
+- extractor: MinerU
+
+## Summary
+
+-
+
+## Images
+
 ${assets}
+
+---
+
+## Content
+
 `;
 };
 
 /**
- * Uploads the latest image to /api/summarize and shows
- * the first 800 characters of the returned summary.
+ * Uploads all captured images to /api/extract-advanced and shows
+ * the returned markdown body for user review/editing.
  */
 
 export const handleSummary = async ({
   images,
   setIsSaving,
-  setSummary, // NOTE: This function now sets BOTH draftSummary and editableSummary in the calling hook.
+  setSummary,
   setSummaryImageUrl,
   setShowSummaryOverlay,
   setError,
 }: {
   images: Image[];
   setIsSaving: (isSaving: boolean) => void;
-  // UPDATED: setSummary is now a function that takes the final summary string
   setSummary: (summary: string) => void;
   setSummaryImageUrl: (url: string | null) => void;
   setShowSummaryOverlay: (show: boolean) => void;
@@ -70,45 +87,42 @@ export const handleSummary = async ({
   try {
     const formData = new FormData();
 
-    // ✅ append ALL images
     images.forEach((image) => {
       formData.append("image", image.file);
     });
 
-    // ✅ optionally include URLs if your server supports imageUrl
     images.forEach((image) => {
       if (image.url) {
         formData.append("imageUrl", image.url);
       }
     });
-    
-    const response = await fetch("/api/summarize", {
+
+    const response = await fetch("/api/extract-advanced", {
       method: "POST",
       body: formData,
     });
 
     if (!response.ok) {
       const message = await response.text();
-      throw new Error(message || "Failed to summarize image.");
+      throw new Error(message || "Failed to extract document.");
     }
 
-    const data = (await response.json()) as { summary?: string };
+    const data = (await response.json()) as { summary?: string; markdown?: string };
+    const extractedMarkdown = data.markdown || data.summary || "";
+    const resolvedSummary = extractedMarkdown.trim().length
+      ? extractedMarkdown
+      : fallbackSummary;
 
-    // First 800 characters only
-    const summaryText = (data.summary || "").slice(0, 800);
-    const resolvedSummary = summaryText.trim().length ? summaryText : fallbackSummary;
-
-    // Call the custom setter, which will update both draftSummary and editableSummary
     setSummary(resolvedSummary);
     setSummaryImageUrl(images[images.length - 1].url);
     setShowSummaryOverlay(true);
     playSuccessChime();
     return true;
   } catch (error) {
-    console.error("Failed to summarize image:", error);
+    console.error("Failed to extract document:", error);
     setSummary(fallbackSummary);
     setSummaryImageUrl(null);
-    setError("Unable to summarize the captured image. Please edit the template summary.");
+    setError("Unable to extract the captured document. Please edit the template markdown.");
     setShowSummaryOverlay(false);
     return true;
   } finally {
