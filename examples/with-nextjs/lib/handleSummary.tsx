@@ -41,7 +41,7 @@ const buildSummaryTemplate = (images: Image[]) => {
 - subject_category:
 - page_count: ${images.length}
 - source_type: scanned_images
-- extractor: MinerU
+- extractor: PaddleOCR
 
 ## Summary
 

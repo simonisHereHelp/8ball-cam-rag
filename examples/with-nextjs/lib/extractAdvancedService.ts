@@ -1,5 +1,14 @@
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+const getAdvancedOcrServiceUrl = () =>
+  process.env.PADDLE_OCR_URL?.trim() || "";
+
+const getAdvancedOcrBearerToken = () =>
+  process.env.PADDLE_OCR_BEARER_TOKEN?.trim() || "";
+
+const getAdvancedOcrTimeoutMs = () =>
+  Number(process.env.PADDLE_OCR_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+
 export interface AdvancedExtractResult {
   markdown: string;
   plainText?: string;
@@ -60,13 +69,14 @@ export async function extractAdvancedMarkdown(
   files: File[],
   options: ExtractAdvancedOptions = {},
 ): Promise<AdvancedExtractResult> {
-  const serviceUrl = process.env.MINERU_SERVICE_URL?.trim();
+  const serviceUrl = getAdvancedOcrServiceUrl();
 
   if (!serviceUrl) {
-    throw new Error("Missing MINERU_SERVICE_URL");
+    throw new Error("Missing PADDLE_OCR_URL");
   }
 
-  const timeoutMs = Number(process.env.MINERU_SERVICE_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  const bearerToken = getAdvancedOcrBearerToken();
+  const timeoutMs = getAdvancedOcrTimeoutMs();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -86,9 +96,9 @@ export async function extractAdvancedMarkdown(
 
     const upstreamResponse = await fetch(serviceUrl, {
       method: "POST",
-      headers: process.env.MINERU_SERVICE_BEARER_TOKEN
+      headers: bearerToken
         ? {
-            Authorization: `Bearer ${process.env.MINERU_SERVICE_BEARER_TOKEN}`,
+            Authorization: `Bearer ${bearerToken}`,
           }
         : undefined,
       body: formData,
