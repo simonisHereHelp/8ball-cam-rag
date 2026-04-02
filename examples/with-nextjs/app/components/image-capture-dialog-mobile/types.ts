@@ -37,8 +37,7 @@ export interface ExtractOutput {
 }
 
 export interface IngestOutput {
-  source: string;
-  documentId: string;
+  documentDate: string;
   title: string;
   issuer_name: string;
   subject_category: string;

@@ -33,8 +33,7 @@ interface ExtractOutput {
 }
 
 interface IngestOutput {
-  source: string;
-  documentId: string;
+  documentDate: string;
   title: string;
   issuer_name: string;
   subject_category: string;
@@ -57,8 +56,7 @@ const INGEST_OUTPUT_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      source: { type: "string" },
-      documentId: { type: "string" },
+      documentDate: { type: "string" },
       title: { type: "string" },
       issuer_name: { type: "string" },
       subject_category: { type: "string" },
@@ -82,8 +80,7 @@ const INGEST_OUTPUT_SCHEMA = {
       },
     },
     required: [
-      "source",
-      "documentId",
+      "documentDate",
       "title",
       "issuer_name",
       "subject_category",
@@ -182,8 +179,7 @@ Transform the provided extract_output JSON into ingest_output JSON.
 Requirements:
 - Return JSON only.
 - Preserve the exact output shape and field names.
-- source must be "paddle-ocr".
-- documentId should be a stable-looking generated identifier such as "doc-001" when no source id exists.
+- documentDate should contain the canonical document date when available, preferably as YYYYMMDD or a stable date-tag string such as "doc-20251127-001".
 - title should use extract_output.title when present; otherwise infer a concise title from the document.
 - issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
 - subject_category: reason about the topic of this document and choose the single best matching canonized subject_category from the bible. Do not invent values outside the bible.

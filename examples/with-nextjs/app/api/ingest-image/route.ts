@@ -12,8 +12,7 @@ const OPENAI_INGEST_IMAGE_MODEL =
   process.env.OPENAI_INGEST_IMAGE_MODEL?.trim() || "gpt-4.1-mini";
 
 interface IngestOutput {
-  source: string;
-  documentId: string;
+  documentDate: string;
   title: string;
   issuer_name: string;
   subject_category: string;
@@ -50,8 +49,7 @@ const INGEST_IMAGE_OUTPUT_SCHEMA = {
     type: "object",
     additionalProperties: false,
     properties: {
-      source: { type: "string" },
-      documentId: { type: "string" },
+      documentDate: { type: "string" },
       title: { type: "string" },
       issuer_name: { type: "string" },
       subject_category: { type: "string" },
@@ -75,8 +73,7 @@ const INGEST_IMAGE_OUTPUT_SCHEMA = {
       },
     },
     required: [
-      "source",
-      "documentId",
+      "documentDate",
       "title",
       "issuer_name",
       "subject_category",
@@ -301,8 +298,8 @@ export async function POST(req: Request) {
 Return JSON only.
 
 Rules:
-- source must be "paddle-ocr".
 - Generate title, issuer_name, abstractSummary, normalizedText, warnings, and stats from the images.
+- documentDate should contain the canonical document date when available, preferably as YYYYMMDD or a stable date-tag string such as "doc-20251127-001".
 - normalizedText must contain the full normalized raw text reconstructed from the images as accurately as possible.
 - normalizedText must start with this markdown-style header:
   # <title>

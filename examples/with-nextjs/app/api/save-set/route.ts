@@ -9,8 +9,7 @@ import {
 import { normalizeFilename } from "@/lib/normalizeFilename";
 
 interface IngestOutputPayload {
-  source: string;
-  documentId: string;
+  documentDate: string;
   title: string;
   issuer_name: string;
   subject_category: string;
@@ -87,13 +86,30 @@ const deriveDatePart = (text: string) => {
   return new Date().toISOString().slice(0, 10).replace(/-/g, "");
 };
 
+const deriveDatePartFromPayload = (payload: IngestOutputPayload) => {
+  const documentDateMatch = payload.documentDate.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+  if (documentDateMatch) {
+    return `${documentDateMatch[1]}${documentDateMatch[2]}${documentDateMatch[3]}`;
+  }
+
+  const titleDate = deriveDatePart(payload.title || "");
+  if (titleDate !== new Date().toISOString().slice(0, 10).replace(/-/g, "")) {
+    return titleDate;
+  }
+
+  const abstractDate = deriveDatePart(payload.abstractSummary || "");
+  if (abstractDate !== new Date().toISOString().slice(0, 10).replace(/-/g, "")) {
+    return abstractDate;
+  }
+
+  return deriveDatePart(payload.normalizedText || "");
+};
+
 const deriveSetNameFromIngestOutput = (payload: IngestOutputPayload) => {
   const issuer = (payload.issuer_name || "document").trim();
   const docClass = (payload.doc_class || "Other").trim();
   const action = (payload.action_in_verb || "SafeKeep").trim();
-  const datePart = deriveDatePart(
-    payload.normalizedText || payload.abstractSummary || payload.title || "",
-  );
+  const datePart = deriveDatePartFromPayload(payload);
 
   return normalizeFilename(
     `${issuer}-${docClass}-${action}-${datePart}`.replace(/[\\/:*?"<>|]/g, "-"),
@@ -117,8 +133,7 @@ const parseIngestOutput = (value: string): IngestOutputPayload => {
   }
 
   return {
-    source: typeof payload.source === "string" ? payload.source : "paddle-ocr",
-    documentId: typeof payload.documentId === "string" ? payload.documentId : "doc-001",
+    documentDate: typeof payload.documentDate === "string" ? payload.documentDate : "",
     title: payload.title,
     issuer_name: payload.issuer_name,
     subject_category: payload.subject_category,
