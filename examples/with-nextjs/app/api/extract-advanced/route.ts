@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { GPT_Router } from "@/lib/gptRouter";
 import { extractAdvancedMarkdown } from "@/lib/extractAdvancedService";
+import { buildIngestedSummary } from "@/lib/ingestedSummary";
 import {
   CANONICALS_BIBLE_SOURCE,
   PROMPT_EXTRACT_SOURCE,
@@ -32,10 +33,12 @@ export async function POST(req: Request) {
       systemPrompt,
       userPrompt,
     });
+    const ingestedSummary = buildIngestedSummary(extracted.markdown);
 
     return NextResponse.json({
       summary: extracted.markdown,
       markdown: extracted.markdown,
+      ingestedSummary,
       plainText: extracted.plainText ?? "",
       title: extracted.title ?? "",
       abstract: extracted.abstract ?? "",

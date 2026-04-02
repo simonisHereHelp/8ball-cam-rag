@@ -85,7 +85,6 @@ export async function extractAdvancedMarkdown(
 
     files.forEach((file) => {
       formData.append("image", file, file.name);
-      formData.append("files", file, file.name);
     });
     if (options.systemPrompt) {
       formData.append("systemPrompt", options.systemPrompt);

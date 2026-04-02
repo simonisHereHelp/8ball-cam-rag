@@ -14,6 +14,43 @@ export interface SubfolderOption {
   description?: string;
 }
 
+export interface ExtractPage {
+  page: number;
+  markdown: string;
+  plainText: string;
+  contentList: unknown[];
+  imagePath: string;
+  processedImagePath: string;
+  ocrMetadata: {
+    preprocess: Record<string, unknown>;
+    runtime: Record<string, unknown>;
+  };
+  rawResult: Record<string, unknown>;
+}
+
+export interface ExtractOutput {
+  markdown: string;
+  plainText: string;
+  title: string;
+  abstract: string;
+  pages: ExtractPage[];
+}
+
+export interface IngestOutput {
+  source: string;
+  documentId: string;
+  title: string;
+  issuer: string;
+  abstractSummary: string;
+  normalizedText: string;
+  warnings: string[];
+  stats: {
+    sectionCount: number;
+    pageCount: number;
+    characterCount: number;
+  };
+}
+
 export interface State {
   images: Image[];
   facingMode: FacingMode;
@@ -28,6 +65,9 @@ export interface State {
   showSummaryOverlay: boolean;
   error: string;
   saveMessage: string;
+  extractOutput: ExtractOutput | null;
+  ingestOutput: IngestOutput | null;
+  isIngesting: boolean;
   availableSubfolders: SubfolderOption[];
   selectedSubfolder: SubfolderOption | null;
   subfolderLoading: boolean;
@@ -44,6 +84,7 @@ export interface Actions {
   handleCameraSwitch: () => Promise<void>;
   handleAlbumSelect: (files: FileList | null) => Promise<void>;
   handleSummarize: () => Promise<void>;
+  handleIngest: () => Promise<void>;
   handleSaveImages: () => Promise<void>;
   handleClose: () => void;
   setCaptureSource: (source: "camera" | "photos") => void;

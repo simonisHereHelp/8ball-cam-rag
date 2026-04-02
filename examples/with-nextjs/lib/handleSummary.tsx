@@ -1,6 +1,7 @@
 // app/lib/handleSummary.ts
 
 import { playSuccessChime } from "../app/components/image-capture-dialog-mobile/soundEffects";
+import type { ExtractOutput } from "../app/components/image-capture-dialog-mobile/types";
 
 export interface Image {
   url: string;
@@ -67,6 +68,7 @@ export const handleSummary = async ({
   images,
   setIsSaving,
   setSummary,
+  setExtractOutput,
   setSummaryImageUrl,
   setShowSummaryOverlay,
   setError,
@@ -74,6 +76,7 @@ export const handleSummary = async ({
   images: Image[];
   setIsSaving: (isSaving: boolean) => void;
   setSummary: (summary: string) => void;
+  setExtractOutput: (output: ExtractOutput | null) => void;
   setSummaryImageUrl: (url: string | null) => void;
   setShowSummaryOverlay: (show: boolean) => void;
   setError: (message: string) => void;
@@ -107,12 +110,22 @@ export const handleSummary = async ({
       throw new Error(message || "Failed to extract document.");
     }
 
-    const data = (await response.json()) as { summary?: string; markdown?: string };
+    const data = (await response.json()) as Partial<ExtractOutput> & {
+      summary?: string;
+      markdown?: string;
+    };
     const extractedMarkdown = data.markdown || data.summary || "";
     const resolvedSummary = extractedMarkdown.trim().length
       ? extractedMarkdown
       : fallbackSummary;
 
+    setExtractOutput({
+      markdown: data.markdown ?? extractedMarkdown,
+      plainText: data.plainText ?? "",
+      title: data.title ?? "",
+      abstract: data.abstract ?? "",
+      pages: data.pages ?? [],
+    });
     setSummary(resolvedSummary);
     setSummaryImageUrl(images[images.length - 1].url);
     setShowSummaryOverlay(true);
@@ -120,6 +133,7 @@ export const handleSummary = async ({
     return true;
   } catch (error) {
     console.error("Failed to extract document:", error);
+    setExtractOutput(null);
     setSummary(fallbackSummary);
     setSummaryImageUrl(null);
     setError("Unable to extract the captured document. Please edit the template markdown.");

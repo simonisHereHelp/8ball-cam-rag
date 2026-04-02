@@ -12,7 +12,14 @@ import {
   DEFAULTS,
   normalizeCapture,
 } from "../shared/normalizeCapture";
-import type { Image, State, Actions, SubfolderOption } from "./types";
+import type {
+  Image,
+  State,
+  Actions,
+  SubfolderOption,
+  ExtractOutput,
+  IngestOutput,
+} from "./types";
 import {
   applyCanonToSummary,
   fetchIssuerCanonList,
@@ -48,6 +55,9 @@ export const useImageCaptureState = (
   // --- UI Feedback State ---
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [extractOutput, setExtractOutput] = useState<ExtractOutput | null>(null);
+  const [ingestOutput, setIngestOutput] = useState<IngestOutput | null>(null);
+  const [isIngesting, setIsIngesting] = useState(false);
   const [availableSubfolders, setAvailableSubfolders] = useState<SubfolderOption[]>([]);
   const [selectedSubfolder, setSelectedSubfolder] = useState<SubfolderOption | null>(null);
   const [subfolderLoading, setSubfolderLoading] = useState(false);
@@ -87,6 +97,9 @@ export const useImageCaptureState = (
     setSummaryImageUrl(null);
     setError("");
     setSaveMessage("");
+    setExtractOutput(null);
+    setIngestOutput(null);
+    setIsIngesting(false);
     setShowSummaryOverlay(false);
     setShowGallery(false);
     setAvailableSubfolders([]);
@@ -115,6 +128,8 @@ export const useImageCaptureState = (
         setDraftSummary("");
         setEditableSummary("");
         setSaveMessage("");
+        setExtractOutput(null);
+        setIngestOutput(null);
         setShowGallery(false);
         setImages((prev) => [...prev, { url: previewUrl, file: normalizedFile }]);
       } catch (err) {
@@ -151,6 +166,7 @@ export const useImageCaptureState = (
   const handleSummarize = useCallback(async () => {
     setSaveMessage("");
     setError("");
+    setIngestOutput(null);
     
     const setSummaries = (newSummary: string) => {
       setDraftSummary(newSummary);
@@ -161,6 +177,7 @@ export const useImageCaptureState = (
       images,
       setIsSaving,
       setSummary: setSummaries,
+      setExtractOutput,
       setSummaryImageUrl,
       setShowSummaryOverlay,
       setError,
@@ -234,6 +251,49 @@ export const useImageCaptureState = (
     }
   }, [showGallery, availableSubfolders.length, subfolderLoading, refreshSubfolders]);
 
+  const handleIngest = useCallback(async () => {
+    if (isIngesting || !extractOutput) return;
+
+    setIsIngesting(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(extractOutput),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; ingestOutput?: IngestOutput }
+        | IngestOutput
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload && "error" in payload ? payload.error || "Unable to ingest document." : "Unable to ingest document.",
+        );
+      }
+
+      const resolvedOutput =
+        payload && "ingestOutput" in payload ? payload.ingestOutput ?? null : payload;
+
+      if (!resolvedOutput) {
+        throw new Error("Ingest endpoint returned an empty response.");
+      }
+
+      setIngestOutput(resolvedOutput);
+      playSuccessChime();
+    } catch (err) {
+      console.error("Failed to ingest document:", err);
+      setError(err instanceof Error ? err.message : "Unable to ingest document.");
+    } finally {
+      setIsIngesting(false);
+    }
+  }, [extractOutput, isIngesting]);
+
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;
     
@@ -269,6 +329,8 @@ export const useImageCaptureState = (
         setImages([]);
         setDraftSummary("");
         setEditableSummary("");
+        setExtractOutput(null);
+        setIngestOutput(null);
         setSelectedCanon(null);
         setSelectedSubfolder(null);
         playSuccessChime();
@@ -303,6 +365,9 @@ export const useImageCaptureState = (
     summaryImageUrl,
     error,
     saveMessage,
+    extractOutput,
+    ingestOutput,
+    isIngesting,
     availableSubfolders,
     selectedSubfolder,
     subfolderLoading,
@@ -320,6 +385,7 @@ export const useImageCaptureState = (
     handleAlbumSelect,
     handleCameraSwitch,
     handleSummarize,
+    handleIngest,
     handleSaveImages,
     handleClose,
     setCaptureSource,

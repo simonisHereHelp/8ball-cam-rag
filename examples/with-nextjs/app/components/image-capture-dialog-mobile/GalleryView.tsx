@@ -1,4 +1,4 @@
-import { Loader2, Save, X, RefreshCw } from "lucide-react";
+import { Loader2, Save, X, RefreshCw, Upload } from "lucide-react";
 import { Button } from "@/ui/components";
 import type { State, Actions } from "./types";
 
@@ -40,6 +40,30 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
               onChange={(e) => actions.setEditableSummary(e.target.value)}
               placeholder="Add your summary here..."
               className="w-full min-h-[150px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-bold text-blue-300">INGEST OUTPUT</label>
+              <Button
+                onClick={actions.handleIngest}
+                disabled={state.isIngesting || !state.extractOutput}
+                className="app-button h-9 px-4"
+              >
+                {state.isIngesting ? (
+                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                <span className="app-button-label">Ingest</span>
+              </Button>
+            </div>
+            <textarea
+              value={state.ingestOutput ? JSON.stringify(state.ingestOutput, null, 2) : ""}
+              readOnly
+              placeholder="POST the generated extract_output.json and the ingest response JSON will appear here."
+              className="w-full min-h-[180px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white/90 focus:outline-none"
             />
           </div>
 
