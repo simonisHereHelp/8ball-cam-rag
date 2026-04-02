@@ -54,6 +54,15 @@ const resolveMimeType = (file: File, fallbackExtension: string) => {
   return mimeTypeByExtension[extension] ?? "application/octet-stream";
 };
 
+const compactFileNamePart = (value: string, fallback: string) => {
+  const compacted = value
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[\\/:*?"<>|]/g, "-");
+
+  return compacted || fallback;
+};
+
 const normalizeDateToken = (year: number, month: number, day: number) =>
   `${year}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}`;
 
@@ -106,13 +115,13 @@ const deriveDatePartFromPayload = (payload: IngestOutputPayload) => {
 };
 
 const deriveSetNameFromIngestOutput = (payload: IngestOutputPayload) => {
-  const issuer = (payload.issuer_name || "document").trim();
-  const docClass = (payload.doc_class || "Other").trim();
-  const action = (payload.action_in_verb || "SafeKeep").trim();
+  const issuer = compactFileNamePart(payload.issuer_name || "document", "document");
+  const docClass = compactFileNamePart(payload.doc_class || "Other", "Other");
+  const action = compactFileNamePart(payload.action_in_verb || "SafeKeep", "SafeKeep");
   const datePart = deriveDatePartFromPayload(payload);
 
   return normalizeFilename(
-    `${issuer}-${docClass}-${action}-${datePart}`.replace(/[\\/:*?"<>|]/g, "-"),
+    `${issuer}-${docClass}-${action}-${datePart}`,
   );
 };
 
