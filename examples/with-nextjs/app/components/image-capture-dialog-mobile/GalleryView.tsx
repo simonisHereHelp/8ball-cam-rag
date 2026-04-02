@@ -84,8 +84,8 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
               </Button>
             </div>
             <textarea
-              value={state.ingestImageOutput ? JSON.stringify(state.ingestImageOutput, null, 2) : ""}
-              readOnly
+              value={state.editableIngestImageOutput}
+              onChange={(e) => actions.setEditableIngestImageOutput(e.target.value)}
               placeholder="POST the captured images and the ingest_image_output JSON will appear here."
               className="w-full min-h-[180px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white/90 focus:outline-none"
             />
@@ -160,7 +160,7 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
       </div>
 
       <div className="p-4 border-t border-white/10">
-        <Button onClick={actions.handleSaveImages} disabled={state.isSaving || !state.editableSummary.trim()} className="app-button w-full h-12">
+        <Button onClick={actions.handleSaveImages} disabled={state.isSaving || !state.editableIngestImageOutput.trim()} className="app-button w-full h-12">
           {state.isSaving ? (
             <Loader2 className="animate-spin mr-2" />
           ) : (

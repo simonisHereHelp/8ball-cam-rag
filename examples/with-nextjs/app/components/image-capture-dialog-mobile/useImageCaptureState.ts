@@ -59,6 +59,7 @@ export const useImageCaptureState = (
   const [ingestOutput, setIngestOutput] = useState<IngestOutput | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestImageOutput, setIngestImageOutput] = useState<IngestOutput | null>(null);
+  const [editableIngestImageOutput, setEditableIngestImageOutput] = useState("");
   const [isIngestingImages, setIsIngestingImages] = useState(false);
   const [availableSubfolders, setAvailableSubfolders] = useState<SubfolderOption[]>([]);
   const [selectedSubfolder, setSelectedSubfolder] = useState<SubfolderOption | null>(null);
@@ -102,6 +103,7 @@ export const useImageCaptureState = (
     setExtractOutput(null);
     setIngestOutput(null);
     setIngestImageOutput(null);
+    setEditableIngestImageOutput("");
     setIsIngesting(false);
     setIsIngestingImages(false);
     setShowSummaryOverlay(false);
@@ -135,6 +137,7 @@ export const useImageCaptureState = (
         setExtractOutput(null);
         setIngestOutput(null);
         setIngestImageOutput(null);
+        setEditableIngestImageOutput("");
         setShowGallery(false);
         setImages((prev) => [...prev, { url: previewUrl, file: normalizedFile }]);
       } catch (err) {
@@ -173,6 +176,7 @@ export const useImageCaptureState = (
     setError("");
     setIngestOutput(null);
     setIngestImageOutput(null);
+    setEditableIngestImageOutput("");
     
     const setSummaries = (newSummary: string) => {
       setDraftSummary(newSummary);
@@ -349,6 +353,7 @@ export const useImageCaptureState = (
       }
 
       setIngestImageOutput(resolvedOutput);
+      setEditableIngestImageOutput(JSON.stringify(resolvedOutput, null, 2));
       playSuccessChime();
     } catch (err) {
       console.error("Failed to ingest images:", err);
@@ -360,10 +365,10 @@ export const useImageCaptureState = (
 
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;
-    
-    const finalSummary = editableSummary.trim();
-    if (!finalSummary) {
-      setError("Please ensure the summary is not empty before saving.");
+
+    const trimmedIngestJson = editableIngestImageOutput.trim();
+    if (!trimmedIngestJson) {
+      setError("Please ensure ingest-image-output.json is not empty before saving.");
       return;
     }
 
@@ -373,7 +378,7 @@ export const useImageCaptureState = (
     await handleSave({
       images,
       draftSummary,
-      finalSummary,
+      ingestImageOutputJson: trimmedIngestJson,
       selectedCanon,
       selectedSubfolder,
       setIsSaving,
@@ -396,6 +401,7 @@ export const useImageCaptureState = (
         setExtractOutput(null);
         setIngestOutput(null);
         setIngestImageOutput(null);
+        setEditableIngestImageOutput("");
         setSelectedCanon(null);
         setSelectedSubfolder(null);
         playSuccessChime();
@@ -408,7 +414,7 @@ export const useImageCaptureState = (
     isSaving,
     images,
     draftSummary,
-    editableSummary,
+    editableIngestImageOutput,
     selectedCanon,
     selectedSubfolder,
     onOpenChange,
@@ -434,6 +440,7 @@ export const useImageCaptureState = (
     ingestOutput,
     isIngesting,
     ingestImageOutput,
+    editableIngestImageOutput,
     isIngestingImages,
     availableSubfolders,
     selectedSubfolder,
@@ -458,6 +465,7 @@ export const useImageCaptureState = (
     handleClose,
     setCaptureSource,
     setEditableSummary,
+    setEditableIngestImageOutput,
     setDraftSummary,
     setShowGallery,
     setCameraError,

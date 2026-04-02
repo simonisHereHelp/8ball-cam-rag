@@ -72,6 +72,7 @@ export interface State {
   ingestOutput: IngestOutput | null;
   isIngesting: boolean;
   ingestImageOutput: IngestOutput | null;
+  editableIngestImageOutput: string;
   isIngestingImages: boolean;
   availableSubfolders: SubfolderOption[];
   selectedSubfolder: SubfolderOption | null;
@@ -95,6 +96,7 @@ export interface Actions {
   handleClose: () => void;
   setCaptureSource: (source: "camera" | "photos") => void;
   setEditableSummary: (summary: string) => void;
+  setEditableIngestImageOutput: (json: string) => void;
   setDraftSummary: (summary: string) => void;
   setShowGallery: (show: boolean) => void;
   setCameraError: (error: boolean) => void;

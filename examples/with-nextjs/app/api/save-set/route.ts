@@ -1,21 +1,32 @@
-// app/api/save-set/route.ts
 import { NextResponse } from "next/server";
 import { Buffer } from "buffer";
 import { driveSaveFiles } from "@/lib/driveSaveFiles";
 import { GPT_Router } from "@/lib/gptRouter";
 import {
+  DRIVE_ACTIVE_SUBFOLDER_SOURCE,
   DRIVE_FALLBACK_FOLDER_ID,
-  PROMPT_SET_NAME_SOURCE,
 } from "@/lib/jsonCanonSources";
-import { resolveDriveFolder } from "@/lib/driveSubfolderResolver";
 import { normalizeFilename } from "@/lib/normalizeFilename";
 
-interface SelectedCanonMeta {
-  master: string;
-  aliases?: string[];
+interface IngestOutputPayload {
+  source: string;
+  documentId: string;
+  title: string;
+  issuer_name: string;
+  subject_category: string;
+  doc_class: string;
+  action_in_verb: string;
+  abstractSummary: string;
+  normalizedText: string;
+  warnings: string[];
+  stats: {
+    sectionCount: number;
+    pageCount: number;
+    characterCount: number;
+  };
 }
 
-interface SelectedSubfolderMeta {
+interface ActiveSubfolder {
   topic: string;
   folderId?: string;
 }
@@ -44,12 +55,94 @@ const resolveMimeType = (file: File, fallbackExtension: string) => {
   return mimeTypeByExtension[extension] ?? "application/octet-stream";
 };
 
+const normalizeDateToken = (year: number, month: number, day: number) =>
+  `${year}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+
+const deriveDatePart = (text: string) => {
+  const normalized = text.replace(/\r/g, " ");
+
+  const isoMatch = normalized.match(/\b(20\d{2}|19\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/);
+  if (isoMatch) {
+    return normalizeDateToken(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+  }
+
+  const compactMatch = normalized.match(/\b(20\d{2}|19\d{2})(\d{2})(\d{2})\b/);
+  if (compactMatch) {
+    return normalizeDateToken(
+      Number(compactMatch[1]),
+      Number(compactMatch[2]),
+      Number(compactMatch[3]),
+    );
+  }
+
+  const rocMatch = normalized.match(/民國\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (rocMatch) {
+    return normalizeDateToken(
+      Number(rocMatch[1]) + 1911,
+      Number(rocMatch[2]),
+      Number(rocMatch[3]),
+    );
+  }
+
+  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+};
+
+const deriveSetNameFromIngestOutput = (payload: IngestOutputPayload) => {
+  const issuer = (payload.issuer_name || "document").trim();
+  const docClass = (payload.doc_class || "Other").trim();
+  const action = (payload.action_in_verb || "SafeKeep").trim();
+  const datePart = deriveDatePart(
+    payload.normalizedText || payload.abstractSummary || payload.title || "",
+  );
+
+  return normalizeFilename(
+    `${issuer}-${docClass}-${action}-${datePart}`.replace(/[\\/:*?"<>|]/g, "-"),
+  );
+};
+
+const parseIngestOutput = (value: string): IngestOutputPayload => {
+  const payload = JSON.parse(value) as Partial<IngestOutputPayload>;
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.title !== "string" ||
+    typeof payload.issuer_name !== "string" ||
+    typeof payload.subject_category !== "string" ||
+    typeof payload.doc_class !== "string" ||
+    typeof payload.action_in_verb !== "string" ||
+    typeof payload.normalizedText !== "string"
+  ) {
+    throw new Error("Invalid ingest-image-output.json payload.");
+  }
+
+  return {
+    source: typeof payload.source === "string" ? payload.source : "paddle-ocr",
+    documentId: typeof payload.documentId === "string" ? payload.documentId : "doc-001",
+    title: payload.title,
+    issuer_name: payload.issuer_name,
+    subject_category: payload.subject_category,
+    doc_class: payload.doc_class,
+    action_in_verb: payload.action_in_verb,
+    abstractSummary: typeof payload.abstractSummary === "string" ? payload.abstractSummary : "",
+    normalizedText: payload.normalizedText,
+    warnings: Array.isArray(payload.warnings)
+      ? payload.warnings.filter((value): value is string => typeof value === "string")
+      : [],
+    stats: {
+      sectionCount: Number(payload.stats?.sectionCount ?? 0),
+      pageCount: Number(payload.stats?.pageCount ?? 0),
+      characterCount: Number(payload.stats?.characterCount ?? payload.normalizedText.length),
+    },
+  };
+};
+
 function buildMarkdown(params: {
   setName: string;
-  summary: string;
+  ingestOutput: IngestOutputPayload;
   imageFiles: File[];
 }) {
-  const { setName, summary, imageFiles } = params;
+  const { setName, ingestOutput, imageFiles } = params;
   const images = imageFiles.map((file, idx) => {
     const pageNumber = idx + 1;
     const extension = resolveExtension(file.name, "jpeg");
@@ -59,30 +152,15 @@ function buildMarkdown(params: {
     };
   });
 
-  const normalizedSummary = summary.trim();
   const imageSection = images.map((image) => `![${image.alt}](${image.path})`).join("\n");
-  const hasImageLinks = /!\[[^\]]*\]\(([^)]+)\)/.test(normalizedSummary);
 
-  const rewrittenSummary = images.reduce((content, image, index) => {
-    const pageNumber = index + 1;
-    const patterns = [
-      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?\\{\\{setName\\}\\}-p${pageNumber}\\.[^)]+\\)`, "gi"),
-      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?page[-_]?${pageNumber}(?:\\.[^)]+)?\\)`, "gi"),
-      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?p${pageNumber}(?:\\.[^)]+)?\\)`, "gi"),
-      new RegExp(`!\\[[^\\]]*\\]\\((?:\\.\\/)?images\\/[^)]*page[-_]?${pageNumber}[^)]*\\)`, "gi"),
-    ];
+  return `${ingestOutput.normalizedText.trim()}
 
-    return patterns.reduce(
-      (current, pattern) => current.replace(pattern, `![${image.alt}](${image.path})`),
-      content,
-    );
-  }, normalizedSummary);
+## JSON
 
-  if (hasImageLinks) {
-    return rewrittenSummary;
-  }
-
-  return `${rewrittenSummary}
+\`\`\`json
+${JSON.stringify(ingestOutput, null, 2)}
+\`\`\`
 
 ## Images
 
@@ -90,68 +168,35 @@ ${imageSection}
 `;
 }
 
+const resolveFolderBySubjectCategory = async (subjectCategory: string, baseFolderId: string) => {
+  const config = await GPT_Router.fetchJsonSource(DRIVE_ACTIVE_SUBFOLDER_SOURCE).catch(() => null);
+  const subfolders = Array.isArray((config as { subfolders?: ActiveSubfolder[] } | null)?.subfolders)
+    ? ((config as { subfolders?: ActiveSubfolder[] }).subfolders ?? [])
+    : Array.isArray(config)
+      ? (config as ActiveSubfolder[])
+      : [];
+
+  const matched = subfolders.find(
+    (entry) => entry.topic?.toLowerCase() === subjectCategory.toLowerCase(),
+  );
+
+  if (!matched) {
+    return {
+      folderId: buildFolderPath(DRIVE_FALLBACK_FOLDER_ID || baseFolderId, baseFolderId),
+      topic: null,
+    };
+  }
+
+  return {
+    folderId: buildFolderPath(matched.folderId || matched.topic, baseFolderId),
+    topic: matched.topic,
+  };
+};
+
 export const runtime = "nodejs";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PROMPT_ID = PROMPT_SET_NAME_SOURCE;
 const BASE_DRIVE_FOLDER_ID = DRIVE_FALLBACK_FOLDER_ID;
 const ROOT_DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
-/**
- * 根據摘要產生檔案名稱標籤
- */
-async function deriveSetNameFromSummary(summary: string): Promise<string> {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const fallbackTitle = "document";
-  const namingInput = summary.trim().slice(0, 4000);
-
-  if (!OPENAI_API_KEY) return `${fallbackTitle}-${datePart}`;
-
-  try {
-    // 1. 使用一致的風格獲取 System 與 User Prompt (注入 Summary)
-    const systemPrompt = await GPT_Router.getSystemPrompt(PROMPT_ID);
-    const userPrompt = await GPT_Router.getUserPrompt(
-        PROMPT_ID, { 
-        summary: namingInput,
-        wordTarget: 150 // 可選覆蓋
-      });
-
-    // 2. 呼叫 OpenAI 產生名稱
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0,
-        max_tokens: 64,
-      }),
-    });
-
-    if (!res.ok) return `${fallbackTitle}-${datePart}`;
-
-    const data = await res.json();
-    let label = data?.choices?.[0]?.message?.content ?? "";
-    
-    // 3. 檔名清理
-    const safeLabel = label.trim()
-      .replace(/[\\\/:*?"<>|]/g, "-")
-      .replace(/\s+/g, "")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80) || fallbackTitle;
-
-    return `${safeLabel}-${datePart}`;
-  } catch (err) {
-    console.error("deriveSetNameFromSummary failed:", err);
-    return `${fallbackTitle}-${datePart}`;
-  }
-}
 
 export async function POST(request: Request) {
   if (!ROOT_DRIVE_FOLDER_ID && !BASE_DRIVE_FOLDER_ID) {
@@ -160,81 +205,57 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const summary = (formData.get("summary") as string | null)?.trim() ?? "";
-    const selectedCanonRaw = formData.get("selectedCanon");
-    const selectedSubfolderRaw = formData.get("selectedSubfolder");
-    let selectedCanon: SelectedCanonMeta | null = null;
-    let selectedSubfolder: SelectedSubfolderMeta | null = null;
-    if (typeof selectedCanonRaw === "string") {
-      try {
-        selectedCanon = (JSON.parse(selectedCanonRaw) as SelectedCanonMeta) ?? null;
-      } catch (err) {
-        console.warn("Unable to parse selectedCanon from request:", err);
-      }
-    }
-    if (typeof selectedSubfolderRaw === "string") {
-      try {
-        selectedSubfolder =
-          (JSON.parse(selectedSubfolderRaw) as SelectedSubfolderMeta) ?? null;
-      } catch (err) {
-        console.warn("Unable to parse selectedSubfolder from request:", err);
-      }
-    }
-
+    const ingestImageOutputJson =
+      (formData.get("ingestImageOutputJson") as string | null)?.trim() ?? "";
     const files = formData.getAll("files").filter((file): file is File => file instanceof File);
 
-    if (!summary || !files.length) {
-      return NextResponse.json({ error: "Summary and files are required." }, { status: 400 });
+    if (!ingestImageOutputJson || !files.length) {
+      return NextResponse.json({ error: "Ingest JSON and files are required." }, { status: 400 });
     }
 
-    // ✅ 執行核心命名邏輯 (調用新的 GPT_Router 流程)
-    const setName = await deriveSetNameFromSummary(summary);
-    const normalizedSetName = normalizeFilename(setName);
+    const ingestOutput = parseIngestOutput(ingestImageOutputJson);
+    const normalizedSetName = deriveSetNameFromIngestOutput(ingestOutput);
 
     const baseFolderId = ROOT_DRIVE_FOLDER_ID || BASE_DRIVE_FOLDER_ID;
     if (!baseFolderId) {
       return NextResponse.json({ error: "Missing DRIVE_FOLDER_ID" }, { status: 500 });
     }
 
-    let targetFolderId: string;
-    let topic: string | null = null;
-
-    if (selectedSubfolder) {
-      targetFolderId = buildFolderPath(
-        selectedSubfolder.folderId || selectedSubfolder.topic,
-        baseFolderId,
-      );
-      topic = selectedSubfolder.topic;
-    } else {
-      // 儲存檔案到 Google Drive (auto-route into active subfolders)
-      const resolved = await resolveDriveFolder(summary);
-      targetFolderId = resolved.folderId;
-      topic = resolved.topic;
-    }
+    const resolved = await resolveFolderBySubjectCategory(
+      ingestOutput.subject_category,
+      baseFolderId,
+    );
+    const targetFolderId = resolved.folderId;
+    const topic = resolved.topic;
 
     const imageFiles = files;
     const markdown = buildMarkdown({
       setName: normalizedSetName,
-      summary,
+      ingestOutput,
       imageFiles,
     });
 
-    const summaryFile = new File([markdown], "summary.md", { type: "text/markdown" });
-    const uploadFiles = [...imageFiles, summaryFile];
+    const jsonFile = new File([JSON.stringify(ingestOutput, null, 2)], "ingest-image-output.json", {
+      type: "application/json",
+    });
+    const markdownFile = new File([markdown], "ingest-image-output.md", {
+      type: "text/markdown",
+    });
+    const uploadFiles = [...imageFiles, jsonFile, markdownFile];
 
     await driveSaveFiles({
       folderId: targetFolderId,
       files: uploadFiles,
       fileToUpload: async (file) => {
-        const baseName = normalizeFilename(
-          normalizedSetName.replace(/[\\/:*?"<>|]/g, "_"),
-        );
+        const baseName = normalizeFilename(normalizedSetName.replace(/[\\/:*?"<>|]/g, "_"));
         const extension = resolveExtension(file.name, "dat");
 
         const fileName = normalizeFilename(
-          file === summaryFile || file.name === "summary.md"
+          file === markdownFile || file.name === "ingest-image-output.md"
             ? `${baseName}.md`
-            : `${baseName}-p${imageFiles.indexOf(file) + 1}.${extension ?? "dat"}`,
+            : file === jsonFile || file.name === "ingest-image-output.json"
+              ? `${baseName}.json`
+              : `${baseName}-p${imageFiles.indexOf(file) + 1}.${extension}`,
         );
 
         return {
@@ -249,8 +270,9 @@ export async function POST(request: Request) {
       { setName: normalizedSetName, targetFolderId, topic },
       { status: 200 },
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unable to save files.";
     console.error("save-set failed:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
