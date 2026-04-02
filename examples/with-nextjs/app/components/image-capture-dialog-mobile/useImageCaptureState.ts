@@ -277,8 +277,13 @@ export const useImageCaptureState = (
         );
       }
 
-      const resolvedOutput =
-        payload && "ingestOutput" in payload ? payload.ingestOutput ?? null : payload;
+      let resolvedOutput: IngestOutput | null = null;
+
+      if (payload && typeof payload === "object" && "ingestOutput" in payload) {
+        resolvedOutput = payload.ingestOutput ?? null;
+      } else {
+        resolvedOutput = payload as IngestOutput | null;
+      }
 
       if (!resolvedOutput) {
         throw new Error("Ingest endpoint returned an empty response.");
