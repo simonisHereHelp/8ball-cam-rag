@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const INGEST_URL = "https://lenovo.ishere.help/ingest";
+const INGEST_BEARER_TOKEN = process.env.PADDLE_OCR_BEARER_TOKEN?.trim() || "";
 
 export async function POST(req: Request) {
   try {
@@ -13,6 +14,9 @@ export async function POST(req: Request) {
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...(INGEST_BEARER_TOKEN
+          ? { Authorization: `Bearer ${INGEST_BEARER_TOKEN}` }
+          : {}),
       },
       body: JSON.stringify(body),
       cache: "no-store",
