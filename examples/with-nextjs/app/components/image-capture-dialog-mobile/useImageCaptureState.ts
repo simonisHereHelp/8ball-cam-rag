@@ -58,6 +58,8 @@ export const useImageCaptureState = (
   const [extractOutput, setExtractOutput] = useState<ExtractOutput | null>(null);
   const [ingestOutput, setIngestOutput] = useState<IngestOutput | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestImageOutput, setIngestImageOutput] = useState<IngestOutput | null>(null);
+  const [isIngestingImages, setIsIngestingImages] = useState(false);
   const [availableSubfolders, setAvailableSubfolders] = useState<SubfolderOption[]>([]);
   const [selectedSubfolder, setSelectedSubfolder] = useState<SubfolderOption | null>(null);
   const [subfolderLoading, setSubfolderLoading] = useState(false);
@@ -99,7 +101,9 @@ export const useImageCaptureState = (
     setSaveMessage("");
     setExtractOutput(null);
     setIngestOutput(null);
+    setIngestImageOutput(null);
     setIsIngesting(false);
+    setIsIngestingImages(false);
     setShowSummaryOverlay(false);
     setShowGallery(false);
     setAvailableSubfolders([]);
@@ -130,6 +134,7 @@ export const useImageCaptureState = (
         setSaveMessage("");
         setExtractOutput(null);
         setIngestOutput(null);
+        setIngestImageOutput(null);
         setShowGallery(false);
         setImages((prev) => [...prev, { url: previewUrl, file: normalizedFile }]);
       } catch (err) {
@@ -167,6 +172,7 @@ export const useImageCaptureState = (
     setSaveMessage("");
     setError("");
     setIngestOutput(null);
+    setIngestImageOutput(null);
     
     const setSummaries = (newSummary: string) => {
       setDraftSummary(newSummary);
@@ -299,6 +305,59 @@ export const useImageCaptureState = (
     }
   }, [extractOutput, isIngesting]);
 
+  const handleIngestImages = useCallback(async () => {
+    if (isIngestingImages || images.length === 0) return;
+
+    setIsIngestingImages(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+
+      images.forEach((image) => {
+        formData.append("image", image.file, image.file.name);
+      });
+
+      const response = await fetch("/api/ingest-image", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; ingestImageOutput?: IngestOutput }
+        | IngestOutput
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload && "error" in payload
+            ? payload.error || "Unable to ingest images."
+            : "Unable to ingest images.",
+        );
+      }
+
+      let resolvedOutput: IngestOutput | null = null;
+
+      if (payload && typeof payload === "object" && "ingestImageOutput" in payload) {
+        resolvedOutput = payload.ingestImageOutput ?? null;
+      } else {
+        resolvedOutput = payload as IngestOutput | null;
+      }
+
+      if (!resolvedOutput) {
+        throw new Error("Ingest-image endpoint returned an empty response.");
+      }
+
+      setIngestImageOutput(resolvedOutput);
+      playSuccessChime();
+    } catch (err) {
+      console.error("Failed to ingest images:", err);
+      setError(err instanceof Error ? err.message : "Unable to ingest images.");
+    } finally {
+      setIsIngestingImages(false);
+    }
+  }, [images, isIngestingImages]);
+
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;
     
@@ -336,6 +395,7 @@ export const useImageCaptureState = (
         setEditableSummary("");
         setExtractOutput(null);
         setIngestOutput(null);
+        setIngestImageOutput(null);
         setSelectedCanon(null);
         setSelectedSubfolder(null);
         playSuccessChime();
@@ -373,6 +433,8 @@ export const useImageCaptureState = (
     extractOutput,
     ingestOutput,
     isIngesting,
+    ingestImageOutput,
+    isIngestingImages,
     availableSubfolders,
     selectedSubfolder,
     subfolderLoading,
@@ -391,6 +453,7 @@ export const useImageCaptureState = (
     handleCameraSwitch,
     handleSummarize,
     handleIngest,
+    handleIngestImages,
     handleSaveImages,
     handleClose,
     setCaptureSource,

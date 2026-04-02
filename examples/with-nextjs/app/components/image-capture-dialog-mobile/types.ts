@@ -68,6 +68,8 @@ export interface State {
   extractOutput: ExtractOutput | null;
   ingestOutput: IngestOutput | null;
   isIngesting: boolean;
+  ingestImageOutput: IngestOutput | null;
+  isIngestingImages: boolean;
   availableSubfolders: SubfolderOption[];
   selectedSubfolder: SubfolderOption | null;
   subfolderLoading: boolean;
@@ -85,6 +87,7 @@ export interface Actions {
   handleAlbumSelect: (files: FileList | null) => Promise<void>;
   handleSummarize: () => Promise<void>;
   handleIngest: () => Promise<void>;
+  handleIngestImages: () => Promise<void>;
   handleSaveImages: () => Promise<void>;
   handleClose: () => void;
   setCaptureSource: (source: "camera" | "photos") => void;

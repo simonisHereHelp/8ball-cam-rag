@@ -67,6 +67,30 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
             />
           </div>
 
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-bold text-blue-300">INGEST IMAGE OUTPUT</label>
+              <Button
+                onClick={actions.handleIngestImages}
+                disabled={state.isIngestingImages || state.images.length === 0}
+                className="app-button h-9 px-4"
+              >
+                {state.isIngestingImages ? (
+                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                <span className="app-button-label">Ingest Images</span>
+              </Button>
+            </div>
+            <textarea
+              value={state.ingestImageOutput ? JSON.stringify(state.ingestImageOutput, null, 2) : ""}
+              readOnly
+              placeholder="POST the captured images and the ingest_image_output JSON will appear here."
+              className="w-full min-h-[180px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white/90 focus:outline-none"
+            />
+          </div>
+
           {/* Canon Selection */}
           <div className="p-3 bg-white/5 rounded-lg border border-white/10">
             <div className="flex justify-between items-center mb-2">
