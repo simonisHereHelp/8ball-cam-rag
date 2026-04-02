@@ -182,6 +182,7 @@ function buildMarkdown(params: {
 
 ## Meta
 
+- document_date: ${ingestOutput.documentDate}
 - issuer_name: ${ingestOutput.issuer_name}
 - subject_category: ${ingestOutput.subject_category}
 - doc_class: ${ingestOutput.doc_class}
