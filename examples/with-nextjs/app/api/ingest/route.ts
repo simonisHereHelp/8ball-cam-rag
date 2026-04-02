@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { GPT_Router } from "@/lib/gptRouter";
+import {
+  CANONICALS_BIBLE_SOURCE,
+  SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE,
+} from "@/lib/jsonCanonSources";
 
 export const runtime = "nodejs";
 
@@ -31,7 +36,10 @@ interface IngestOutput {
   source: string;
   documentId: string;
   title: string;
-  issuer: string;
+  issuer_name: string;
+  subject_category: string;
+  doc_class: string;
+  action_in_verb: string;
   abstractSummary: string;
   normalizedText: string;
   warnings: string[];
@@ -52,7 +60,10 @@ const INGEST_OUTPUT_SCHEMA = {
       source: { type: "string" },
       documentId: { type: "string" },
       title: { type: "string" },
-      issuer: { type: "string" },
+      issuer_name: { type: "string" },
+      subject_category: { type: "string" },
+      doc_class: { type: "string" },
+      action_in_verb: { type: "string" },
       abstractSummary: { type: "string" },
       normalizedText: { type: "string" },
       warnings: {
@@ -74,7 +85,10 @@ const INGEST_OUTPUT_SCHEMA = {
       "source",
       "documentId",
       "title",
-      "issuer",
+      "issuer_name",
+      "subject_category",
+      "doc_class",
+      "action_in_verb",
       "abstractSummary",
       "normalizedText",
       "warnings",
@@ -83,7 +97,86 @@ const INGEST_OUTPUT_SCHEMA = {
   },
 } as const;
 
-const getPrompt = (extractOutput: ExtractOutput) => `
+interface CanonicalIssuerEntry {
+  master?: string;
+  aliases?: string[];
+}
+
+interface TaxonomyEntry {
+  topic?: string;
+  description?: string;
+  keywords?: string[];
+  excluded_keywords?: string[];
+  doc_classes?: string[];
+  actionVerbs?: string[];
+}
+
+const normalizeString = (value: unknown) =>
+  typeof value === "string" ? value.trim() : "";
+
+const buildCanonPromptBlock = ({
+  issuers,
+  taxonomy,
+}: {
+  issuers: CanonicalIssuerEntry[];
+  taxonomy: TaxonomyEntry[];
+}) => {
+  const issuerMapping = issuers.reduce<Record<string, string[]>>((acc, entry) => {
+    const master = normalizeString(entry.master);
+    if (!master) return acc;
+    acc[master] = Array.isArray(entry.aliases)
+      ? entry.aliases.filter((alias): alias is string => typeof alias === "string" && alias.trim().length > 0)
+      : [];
+    return acc;
+  }, {});
+
+  const subjectRules = taxonomy.map((entry) => ({
+    subject_category: normalizeString(entry.topic),
+    description: normalizeString(entry.description),
+    keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+    excluded_keywords: Array.isArray(entry.excluded_keywords) ? entry.excluded_keywords : [],
+    doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
+    action_in_verbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
+  }));
+
+  return JSON.stringify(
+    {
+      issuerCanonicals: issuerMapping,
+      subjectRules,
+    },
+    null,
+    2,
+  );
+};
+
+const normalizeIssuerName = (
+  issuerName: string,
+  issuers: CanonicalIssuerEntry[],
+) => {
+  const candidate = issuerName.trim().toLowerCase();
+  if (!candidate) return issuerName;
+
+  for (const entry of issuers) {
+    const master = normalizeString(entry.master);
+    if (!master) continue;
+
+    if (master.toLowerCase() === candidate) {
+      return master;
+    }
+
+    const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+    if (aliases.some((alias) => normalizeString(alias).toLowerCase() === candidate)) {
+      return master;
+    }
+  }
+
+  return issuerName;
+};
+
+const getPrompt = (
+  extractOutput: ExtractOutput,
+  canonPromptBlock: string,
+) => `
 Transform the provided extract_output JSON into ingest_output JSON.
 
 Requirements:
@@ -92,14 +185,30 @@ Requirements:
 - source must be "paddle-ocr".
 - documentId should be a stable-looking generated identifier such as "doc-001" when no source id exists.
 - title should use extract_output.title when present; otherwise infer a concise title from the document.
-- issuer should identify the issuing organization if possible; otherwise return an empty string.
+- issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
+- subject_category: reason about the topic of this document and choose the single best matching canonized subject_category from the bible. Do not invent values outside the bible.
+- doc_class: reason about the general document form, such as invoice, notice, statement, application form, and choose the best matching canonized doc_class allowed by the selected subject_category.
+- action_in_verb: reason about the best action implied for the addressee and choose the best matching canonized action_in_verb allowed by the selected subject_category.
 - abstractSummary should use extract_output.abstract when present; otherwise create a short summary.
 - normalizedText should be the normalized plain text derived from the best available source, preferring plainText, then markdown/pages.
+- normalizedText must begin with a markdown header in this format:
+  # <title>
+
+  ## Meta
+
+  - issuer_name: <issuer_name>
+  - subject_category: <subject_category>
+  - doc_class: <doc_class>
+  - action_in_verb: <action_in_verb>
+
 - warnings should contain short strings for uncertainty, missing issuer, or weak OCR signals; otherwise [].
 - stats.sectionCount should estimate logical sections from headings/structure.
 - stats.pageCount should equal pages.length when pages exists, otherwise 0.
 - stats.characterCount should reflect normalizedText.length.
 - Do not include extra keys.
+
+Canon data:
+${canonPromptBlock}
 
 extract_output JSON:
 ${JSON.stringify(extractOutput, null, 2)}
@@ -138,6 +247,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid extract_output payload." }, { status: 400 });
     }
 
+    const [canonicalData, taxonomyData] = await Promise.all([
+      GPT_Router._fetchFile(CANONICALS_BIBLE_SOURCE),
+      GPT_Router._fetchFile(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
+    ]);
+
+    const issuers = Array.isArray(canonicalData?.issuers)
+      ? (canonicalData.issuers as CanonicalIssuerEntry[])
+      : [];
+    const taxonomy = Array.isArray(taxonomyData?.subfolders)
+      ? (taxonomyData.subfolders as TaxonomyEntry[])
+      : [];
+    const canonPromptBlock = buildCanonPromptBlock({ issuers, taxonomy });
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -155,11 +277,11 @@ export async function POST(req: Request) {
           {
             role: "system",
             content:
-              "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly.",
+              "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
           },
           {
             role: "user",
-            content: getPrompt(extractOutput),
+            content: getPrompt(extractOutput, canonPromptBlock),
           },
         ],
       }),
@@ -190,6 +312,7 @@ export async function POST(req: Request) {
     }
 
     const ingestOutput = parseStructuredContent(message?.content);
+    ingestOutput.issuer_name = normalizeIssuerName(ingestOutput.issuer_name, issuers);
 
     return NextResponse.json({ ingestOutput });
   } catch (err: unknown) {

@@ -40,7 +40,10 @@ export interface IngestOutput {
   source: string;
   documentId: string;
   title: string;
-  issuer: string;
+  issuer_name: string;
+  subject_category: string;
+  doc_class: string;
+  action_in_verb: string;
   abstractSummary: string;
   normalizedText: string;
   warnings: string[];

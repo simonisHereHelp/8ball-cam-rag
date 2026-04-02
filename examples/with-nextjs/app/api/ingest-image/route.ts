@@ -15,7 +15,10 @@ interface IngestOutput {
   source: string;
   documentId: string;
   title: string;
-  issuer: string;
+  issuer_name: string;
+  subject_category: string;
+  doc_class: string;
+  action_in_verb: string;
   abstractSummary: string;
   normalizedText: string;
   warnings: string[];
@@ -50,7 +53,10 @@ const INGEST_IMAGE_OUTPUT_SCHEMA = {
       source: { type: "string" },
       documentId: { type: "string" },
       title: { type: "string" },
-      issuer: { type: "string" },
+      issuer_name: { type: "string" },
+      subject_category: { type: "string" },
+      doc_class: { type: "string" },
+      action_in_verb: { type: "string" },
       abstractSummary: { type: "string" },
       normalizedText: { type: "string" },
       warnings: {
@@ -72,7 +78,10 @@ const INGEST_IMAGE_OUTPUT_SCHEMA = {
       "source",
       "documentId",
       "title",
-      "issuer",
+      "issuer_name",
+      "subject_category",
+      "doc_class",
+      "action_in_verb",
       "abstractSummary",
       "normalizedText",
       "warnings",
@@ -160,24 +169,20 @@ const upsertMetaLine = (lines: string[], key: string, value: string) => {
   }
 };
 
-const readMetaLine = (lines: string[], key: string) => {
-  const matcher = new RegExp(`^-\\s*${key}\\s*:\\s*(.*)$`, "i");
-  const match = lines
-    .map((line) => line.trim())
-    .find((line) => matcher.test(line))
-    ?.match(matcher);
-
-  return match?.[1]?.trim() || "";
-};
-
 const ensureNormalizedTextHeader = ({
   normalizedText,
   title,
   issuerName,
+  subjectCategory,
+  docClass,
+  actionInVerb,
 }: {
   normalizedText: string;
   title: string;
   issuerName: string;
+  subjectCategory: string;
+  docClass: string;
+  actionInVerb: string;
 }) => {
   const text = normalizedText.trim();
   const lines = text ? text.split(/\r?\n/) : [];
@@ -207,10 +212,6 @@ const ensureNormalizedTextHeader = ({
   const cleanedMetaLines = metaLines
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !/^-\s*title\s*:/i.test(line));
-
-  const subjectCategory = readMetaLine(cleanedMetaLines, "subject_category");
-  const docClass = readMetaLine(cleanedMetaLines, "doc_class");
-  const actionInVerb = readMetaLine(cleanedMetaLines, "action_in_verb");
 
   upsertMetaLine(cleanedMetaLines, "issuer_name", issuerName);
   upsertMetaLine(cleanedMetaLines, "subject_category", subjectCategory);
@@ -301,7 +302,7 @@ Return JSON only.
 
 Rules:
 - source must be "paddle-ocr".
-- Generate title, issuer, abstractSummary, normalizedText, warnings, and stats from the images.
+- Generate title, issuer_name, abstractSummary, normalizedText, warnings, and stats from the images.
 - normalizedText must contain the full normalized raw text reconstructed from the images as accurately as possible.
 - normalizedText must start with this markdown-style header:
   # <title>
@@ -314,9 +315,9 @@ Rules:
   - action_in_verb: <canonized action verb>
 
 - issuer_name normalization rule: if the detected issuer matches an existing canonical master or alias, use the canonical master name; otherwise use the detected issuer name unchanged.
-- subject_category must be chosen strictly from the canon bible below.
-- doc_class must be chosen strictly from the allowed doc_classes of the selected subject_category.
-- action_in_verb must be chosen strictly from the allowed action_in_verbs of the selected subject_category.
+- subject_category: reason about what kind of topic this document is about and choose the single best matching canonized subject_category from the bible below.
+- doc_class: reason about the general known form of this document, such as invoice, notice, statement, application form, and choose the single best matching canonized doc_class allowed by the selected subject_category.
+- action_in_verb: reason about whether this document implies an action for the addressee and choose the single best matching canonized action_in_verb allowed by the selected subject_category.
 - Do not invent non-bibled subject_category, doc_class, or action_in_verb values.
 - stats.pageCount must equal the number of images.
 - stats.characterCount must reflect normalizedText.length.
@@ -359,12 +360,15 @@ ${canonPromptBlock}`,
     }
 
     const ingestImageOutput = parseStructuredContent(message?.content);
-    const normalizedIssuer = normalizeIssuerName(ingestImageOutput.issuer, issuers);
-    ingestImageOutput.issuer = normalizedIssuer;
+    const normalizedIssuer = normalizeIssuerName(ingestImageOutput.issuer_name, issuers);
+    ingestImageOutput.issuer_name = normalizedIssuer;
     ingestImageOutput.normalizedText = ensureNormalizedTextHeader({
       normalizedText: ingestImageOutput.normalizedText,
       title: ingestImageOutput.title,
       issuerName: normalizedIssuer,
+      subjectCategory: ingestImageOutput.subject_category,
+      docClass: ingestImageOutput.doc_class,
+      actionInVerb: ingestImageOutput.action_in_verb,
     });
     ingestImageOutput.stats.characterCount = ingestImageOutput.normalizedText.length;
 
