@@ -153,14 +153,35 @@ function buildMarkdown(params: {
   });
 
   const imageSection = images.map((image) => `![${image.alt}](${image.path})`).join("\n");
+  const rawText = ingestOutput.normalizedText
+    .replace(/\r/g, "")
+    .replace(/^#\s+.*$/m, "")
+    .replace(/^##\s+Meta\s*$/im, "")
+    .replace(/^-+\s*issuer_name\s*:.*$/gim, "")
+    .replace(/^-+\s*subject_category\s*:.*$/gim, "")
+    .replace(/^-+\s*doc_class\s*:.*$/gim, "")
+    .replace(/^-+\s*action_in_verb\s*:.*$/gim, "")
+    .trim();
 
-  return `${ingestOutput.normalizedText.trim()}
+  return `# ${ingestOutput.title}
 
-## JSON
+## Meta
 
-\`\`\`json
-${JSON.stringify(ingestOutput, null, 2)}
-\`\`\`
+- issuer_name: ${ingestOutput.issuer_name}
+- subject_category: ${ingestOutput.subject_category}
+- doc_class: ${ingestOutput.doc_class}
+- action_in_verb: ${ingestOutput.action_in_verb}
+- abstract_summary: ${ingestOutput.abstractSummary}
+
+---
+
+## Raw Text
+
+${rawText}
+
+## JSON Reference
+
+[${setName}.json](./${setName}.json)
 
 ## Images
 
