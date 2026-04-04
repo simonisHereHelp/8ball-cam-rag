@@ -46,18 +46,32 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-3">
               <label className="text-xs font-bold text-blue-300">INGEST OUTPUT</label>
-              <Button
-                onClick={actions.handleIngest}
-                disabled={state.isIngesting || !state.extractOutput}
-                className="app-button h-9 px-4"
-              >
-                {state.isIngesting ? (
-                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                ) : (
-                  <Upload className="mr-2 h-4 w-4" />
-                )}
-                <span className="app-button-label">Ingest</span>
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={actions.handleIngest}
+                  disabled={state.isIngesting || !state.extractOutput}
+                  className="app-button h-9 px-4"
+                >
+                  {state.isIngesting ? (
+                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
+                  <span className="app-button-label">Ingest</span>
+                </Button>
+                <Button
+                  onClick={actions.handleIngestHf}
+                  disabled={state.isIngesting || !state.extractOutput}
+                  className="app-button h-9 px-4"
+                >
+                  {state.isIngesting ? (
+                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
+                  <span className="app-button-label">Ingest-HF</span>
+                </Button>
+              </div>
             </div>
             <textarea
               value={state.ingestOutput ? JSON.stringify(state.ingestOutput, null, 2) : ""}

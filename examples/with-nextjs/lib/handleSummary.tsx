@@ -66,6 +66,7 @@ ${assets}
 
 export const handleSummary = async ({
   images,
+  route = "/api/extract-advanced",
   setIsSaving,
   setSummary,
   setExtractOutput,
@@ -74,6 +75,7 @@ export const handleSummary = async ({
   setError,
 }: {
   images: Image[];
+  route?: string;
   setIsSaving: (isSaving: boolean) => void;
   setSummary: (summary: string) => void;
   setExtractOutput: (output: ExtractOutput | null) => void;
@@ -100,7 +102,7 @@ export const handleSummary = async ({
       }
     });
 
-    const response = await fetch("/api/extract-advanced", {
+    const response = await fetch(route, {
       method: "POST",
       body: formData,
     });

@@ -185,6 +185,36 @@ export const useImageCaptureState = (
     
     const didSummarize = await handleSummary({
       images,
+      route: "/api/extract-advanced",
+      setIsSaving,
+      setSummary: setSummaries,
+      setExtractOutput,
+      setSummaryImageUrl,
+      setShowSummaryOverlay,
+      setError,
+    });
+
+    if (didSummarize && images.length > 0) {
+      setShowGallery(true);
+      playSuccessChime();
+    }
+  }, [images]);
+
+  const handleSummarizeHf = useCallback(async () => {
+    setSaveMessage("");
+    setError("");
+    setIngestOutput(null);
+    setIngestImageOutput(null);
+    setEditableIngestImageOutput("");
+
+    const setSummaries = (newSummary: string) => {
+      setDraftSummary(newSummary);
+      setEditableSummary(newSummary);
+    };
+
+    const didSummarize = await handleSummary({
+      images,
+      route: "/api/extract-hf",
       setIsSaving,
       setSummary: setSummaries,
       setExtractOutput,
@@ -269,6 +299,54 @@ export const useImageCaptureState = (
 
     try {
       const response = await fetch("/api/ingest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(extractOutput),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; ingestOutput?: IngestOutput }
+        | IngestOutput
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload && "error" in payload ? payload.error || "Unable to ingest document." : "Unable to ingest document.",
+        );
+      }
+
+      let resolvedOutput: IngestOutput | null = null;
+
+      if (payload && typeof payload === "object" && "ingestOutput" in payload) {
+        resolvedOutput = payload.ingestOutput ?? null;
+      } else {
+        resolvedOutput = payload as IngestOutput | null;
+      }
+
+      if (!resolvedOutput) {
+        throw new Error("Ingest endpoint returned an empty response.");
+      }
+
+      setIngestOutput(resolvedOutput);
+      playSuccessChime();
+    } catch (err) {
+      console.error("Failed to ingest document:", err);
+      setError(err instanceof Error ? err.message : "Unable to ingest document.");
+    } finally {
+      setIsIngesting(false);
+    }
+  }, [extractOutput, isIngesting]);
+
+  const handleIngestHf = useCallback(async () => {
+    if (isIngesting || !extractOutput) return;
+
+    setIsIngesting(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/ingest-hf", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -459,7 +537,9 @@ export const useImageCaptureState = (
     handleAlbumSelect,
     handleCameraSwitch,
     handleSummarize,
+    handleSummarizeHf,
     handleIngest,
+    handleIngestHf,
     handleIngestImages,
     handleSaveImages,
     handleClose,

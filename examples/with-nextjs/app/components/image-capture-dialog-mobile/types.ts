@@ -89,7 +89,9 @@ export interface Actions {
   handleCameraSwitch: () => Promise<void>;
   handleAlbumSelect: (files: FileList | null) => Promise<void>;
   handleSummarize: () => Promise<void>;
+  handleSummarizeHf: () => Promise<void>;
   handleIngest: () => Promise<void>;
+  handleIngestHf: () => Promise<void>;
   handleIngestImages: () => Promise<void>;
   handleSaveImages: () => Promise<void>;
   handleClose: () => void;
