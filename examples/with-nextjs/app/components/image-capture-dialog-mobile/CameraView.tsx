@@ -81,7 +81,7 @@ export function CameraView({ state, actions, cameraRef }: CameraViewProps) {
           ) : (
             <Save className="mr-2 h-4 w-4" />
           )}{" "}
-          <span className="app-button-label">Summarize</span>
+          <span className="app-button-label">OCR</span>
         </Button>
         <Button onClick={actions.handleSummarizeHf} disabled={state.images.length === 0} className="app-button flex-1">
           {state.isSaving ? (
@@ -89,7 +89,7 @@ export function CameraView({ state, actions, cameraRef }: CameraViewProps) {
           ) : (
             <Save className="mr-2 h-4 w-4" />
           )}{" "}
-          <span className="app-button-label">Summarize-HF</span>
+          <span className="app-button-label">OCR-hf</span>
         </Button>
       </div>
 
