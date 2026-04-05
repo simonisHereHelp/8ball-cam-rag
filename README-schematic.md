@@ -1,36 +1,25 @@
 # Photo Workflow Schematic
 
-## OpenAI Path
+## Main Flow
 
 ```text
-[Summarize]
+[OCR]
   -> /api/extract-advanced
   -> extract_output
   -> [Ingest]
   -> /api/ingest
   -> ingest_output
-```
-
-## HF Path
-
-```text
-[Summarize-HF]
-  -> /api/extract-hf
-  -> extract_output
-  -> [Ingest-HF]
-  -> /api/ingest-hf
-  -> ingest_output
-```
-
-## Shared Save Path
-
-```text
-ingest_output / edited ingest-image-output.json
   -> [Save to Drive]
   -> /api/save-set
   -> Active Directory:
      .json + .md + images
 ```
+
+## Route Notes
+
+- `/api/extract-advanced` forwards images plus prompt data to `PADDLE_OCR_URL + "/extract"`.
+- `/api/ingest` forwards `extract_output` plus canon prompt data to `PADDLE_OCR_URL + "/ingest"`.
+- `/api/save-set` saves the final JSON, markdown, and page images to Drive.
 
 ## Notes
 

@@ -1,30 +1,33 @@
 import fs from "fs/promises";
 import path from "path";
 
-export class HF_Router {
-  static async _fetchFile(fileID: string): Promise<any> {
-    if (!fileID) throw new Error("File ID is required");
+const resolveLocalPath = (source: string) => {
+  const looksLikeDriveId = /^[a-zA-Z0-9_-]{10,}$/.test(source) && !source.includes("/");
+  if (looksLikeDriveId || source.startsWith("http")) return null;
 
-    const resolvedPath = this._resolveLocalPath(fileID);
+  return path.isAbsolute(source) ? source : path.join(process.cwd(), source);
+};
+
+export class JsonPromptLoader {
+  static async fetchJsonSource(source: string): Promise<any> {
+    if (!source) throw new Error("Source is required");
+
+    const resolvedPath = resolveLocalPath(source);
     if (!resolvedPath) {
-      throw new Error("HF_Router only supports local JSON sources in this workspace.");
+      throw new Error("Only local JSON sources are supported in this workspace.");
     }
 
     const fileContent = await fs.readFile(resolvedPath, "utf-8");
     return JSON.parse(fileContent);
   }
 
-  static async fetchJsonSource(source: string): Promise<any> {
-    return this._fetchFile(source);
-  }
-
-  static async getSystemPrompt(promptFileID: string): Promise<string> {
-    const config = await this._fetchFile(promptFileID);
+  static async getSystemPrompt(promptSource: string): Promise<string> {
+    const config = await this.fetchJsonSource(promptSource);
     return config.system;
   }
 
   static async getUserPrompt(
-    promptFileID: string,
+    promptSource: string,
     options: {
       bibleData?: any;
       taxonomyData?: any;
@@ -32,7 +35,7 @@ export class HF_Router {
       wordTarget?: number;
     },
   ): Promise<string> {
-    const config = await this._fetchFile(promptFileID);
+    const config = await this.fetchJsonSource(promptSource);
     let userPrompt = config.user;
     const { bibleData, taxonomyData, summary, wordTarget } = options;
 
@@ -96,15 +99,6 @@ export class HF_Router {
     }
 
     const finalWordTarget = wordTarget || config.wordTarget || 250;
-    userPrompt = userPrompt.replace("{{wordTarget}}", String(finalWordTarget));
-
-    return userPrompt;
-  }
-
-  private static _resolveLocalPath(source: string) {
-    const looksLikeDriveId = /^[a-zA-Z0-9_-]{10,}$/.test(source) && !source.includes("/");
-    if (looksLikeDriveId || source.startsWith("http")) return null;
-
-    return path.isAbsolute(source) ? source : path.join(process.cwd(), source);
+    return userPrompt.replace("{{wordTarget}}", String(finalWordTarget));
   }
 }

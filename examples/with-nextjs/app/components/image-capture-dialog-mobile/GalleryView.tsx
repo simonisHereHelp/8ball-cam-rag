@@ -59,48 +59,12 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
                   )}
                   <span className="app-button-label">Ingest</span>
                 </Button>
-                <Button
-                  onClick={actions.handleIngestHf}
-                  disabled={state.isIngesting || !state.extractOutput}
-                  className="app-button h-9 px-4"
-                >
-                  {state.isIngesting ? (
-                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                  ) : (
-                    <Upload className="mr-2 h-4 w-4" />
-                  )}
-                  <span className="app-button-label">Ingest-HF</span>
-                </Button>
               </div>
             </div>
             <textarea
               value={state.ingestOutput ? JSON.stringify(state.ingestOutput, null, 2) : ""}
               readOnly
               placeholder="POST the generated extract_output.json and the ingest response JSON will appear here."
-              className="w-full min-h-[180px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white/90 focus:outline-none"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-xs font-bold text-blue-300">INGEST IMAGE OUTPUT</label>
-              <Button
-                onClick={actions.handleIngestImages}
-                disabled={state.isIngestingImages || state.images.length === 0}
-                className="app-button h-9 px-4"
-              >
-                {state.isIngestingImages ? (
-                  <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                ) : (
-                  <Upload className="mr-2 h-4 w-4" />
-                )}
-                <span className="app-button-label">Ingest Images</span>
-              </Button>
-            </div>
-            <textarea
-              value={state.editableIngestImageOutput}
-              onChange={(e) => actions.setEditableIngestImageOutput(e.target.value)}
-              placeholder="POST the captured images and the ingest_image_output JSON will appear here."
               className="w-full min-h-[180px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white/90 focus:outline-none"
             />
           </div>
@@ -174,7 +138,7 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
       </div>
 
       <div className="p-4 border-t border-white/10">
-        <Button onClick={actions.handleSaveImages} disabled={state.isSaving || !state.editableIngestImageOutput.trim()} className="app-button w-full h-12">
+        <Button onClick={actions.handleSaveImages} disabled={state.isSaving || !state.ingestOutput} className="app-button w-full h-12">
           {state.isSaving ? (
             <Loader2 className="animate-spin mr-2" />
           ) : (

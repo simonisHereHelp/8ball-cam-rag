@@ -35,7 +35,7 @@
     }
     .branches {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 24px;
       margin-bottom: 24px;
     }
@@ -115,17 +115,17 @@
 <body>
   <div class="page">
     <h1>Photo Workflow Relationship Chart</h1>
-    <p>Parallel summarize and ingest paths, converging into one save flow.</p>
+    <p>One OCR path and one ingest path, converging into one save flow.</p>
 
     <div class="branches">
       <section class="branch">
-        <h2>OpenAI Path</h2>
+        <h2>OCR Path</h2>
         <div class="flow">
           <div class="box">
             <div class="label">Button</div>
-            <div class="value">Summarize</div>
+            <div class="value">OCR</div>
           </div>
-          <div class="arrow">→</div>
+          <div class="arrow">-></div>
           <div class="box">
             <div class="label">Route</div>
             <div class="value">/api/extract-advanced</div>
@@ -135,7 +135,7 @@
             <div class="label">Output</div>
             <div class="value">extract_output</div>
           </div>
-          <div class="arrow">→</div>
+          <div class="arrow">-></div>
           <div class="box">
             <div class="label">Button</div>
             <div class="value">Ingest</div>
@@ -145,42 +145,7 @@
             <div class="label">Route</div>
             <div class="value">/api/ingest</div>
           </div>
-          <div class="arrow">→</div>
-          <div class="box">
-            <div class="label">Output</div>
-            <div class="value">ingest_output</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="branch">
-        <h2>HF Path</h2>
-        <div class="flow">
-          <div class="box">
-            <div class="label">Button</div>
-            <div class="value">Summarize-HF</div>
-          </div>
-          <div class="arrow">→</div>
-          <div class="box">
-            <div class="label">Route</div>
-            <div class="value">/api/extract-hf</div>
-          </div>
-
-          <div class="box">
-            <div class="label">Output</div>
-            <div class="value">extract_output</div>
-          </div>
-          <div class="arrow">→</div>
-          <div class="box">
-            <div class="label">Button</div>
-            <div class="value">Ingest-HF</div>
-          </div>
-
-          <div class="box">
-            <div class="label">Route</div>
-            <div class="value">/api/ingest-hf</div>
-          </div>
-          <div class="arrow">→</div>
+          <div class="arrow">-></div>
           <div class="box">
             <div class="label">Output</div>
             <div class="value">ingest_output</div>
@@ -195,12 +160,12 @@
           <div class="label">Shared Action</div>
           <div class="value">Save to Drive</div>
         </div>
-        <div class="arrow">→</div>
+        <div class="arrow">-></div>
         <div class="box">
           <div class="label">Route</div>
           <div class="value">/api/save-set</div>
         </div>
-        <div class="arrow">→</div>
+        <div class="arrow">-></div>
         <div class="box">
           <div class="label">Output</div>
           <div class="value">Active Directory: .json + .md + images</div>

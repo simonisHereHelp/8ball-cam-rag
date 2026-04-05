@@ -83,14 +83,6 @@ export function CameraView({ state, actions, cameraRef }: CameraViewProps) {
           )}{" "}
           <span className="app-button-label">OCR</span>
         </Button>
-        <Button onClick={actions.handleSummarizeHf} disabled={state.images.length === 0} className="app-button flex-1">
-          {state.isSaving ? (
-            <Loader2 className="animate-spin mr-2" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}{" "}
-          <span className="app-button-label">OCR-hf</span>
-        </Button>
       </div>
 
       <input id="photo-picker" type="file" accept="image/*" className="hidden" onChange={(e) => actions.handleAlbumSelect(e.target.files)} />

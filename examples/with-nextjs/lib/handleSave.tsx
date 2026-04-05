@@ -17,8 +17,7 @@ export interface SelectedSubfolderMeta {
 
 export const handleSave = async ({
   images,
-  draftSummary,
-  ingestImageOutputJson,
+  ingestOutputJson,
   selectedCanon,
   selectedSubfolder,
   setIsSaving,
@@ -26,8 +25,7 @@ export const handleSave = async ({
   onSuccess,
 }: {
   images: Image[];
-  draftSummary: string;
-  ingestImageOutputJson: string;
+  ingestOutputJson: string;
   selectedCanon?: SelectedCanonMeta | null;
   selectedSubfolder?: SelectedSubfolderMeta | null;
   setIsSaving: (isSaving: boolean) => void;
@@ -40,14 +38,14 @@ export const handleSave = async ({
 }): Promise<boolean> => {
   if (!images.length) return false;
 
-  const trimmedIngestImageOutputJson = ingestImageOutputJson.trim();
-  if (!trimmedIngestImageOutputJson) return false;
+  const trimmedIngestOutputJson = ingestOutputJson.trim();
+  if (!trimmedIngestOutputJson) return false;
 
   setIsSaving(true);
 
   try {
     const formData = new FormData();
-    formData.append("ingestImageOutputJson", trimmedIngestImageOutputJson);
+    formData.append("ingestOutputJson", trimmedIngestOutputJson);
 
     if (selectedCanon) {
       formData.append("selectedCanon", JSON.stringify(selectedCanon));
@@ -73,26 +71,6 @@ export const handleSave = async ({
     const json = (await response.json().catch(() => null)) as
       | { setName?: string; targetFolderId?: string | null; topic?: string | null }
       | null;
-
-    try {
-      const updateResponse = await fetch("/api/update-issuerCanon", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          draftSummary: draftSummary.trim(),
-          finalSummary: trimmedIngestImageOutputJson,
-        }),
-        credentials: "include",
-      });
-
-      if (!updateResponse.ok) {
-        console.warn(`[update-issuerCanon] Server warning/error: ${updateResponse.status}`);
-      }
-    } catch (e) {
-      console.error("Error calling /api/update-issuerCanon:", e);
-    }
 
     onSuccess?.({
       setName: json?.setName ?? "",

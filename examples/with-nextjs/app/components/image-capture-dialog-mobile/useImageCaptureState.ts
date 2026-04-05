@@ -58,9 +58,6 @@ export const useImageCaptureState = (
   const [extractOutput, setExtractOutput] = useState<ExtractOutput | null>(null);
   const [ingestOutput, setIngestOutput] = useState<IngestOutput | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
-  const [ingestImageOutput, setIngestImageOutput] = useState<IngestOutput | null>(null);
-  const [editableIngestImageOutput, setEditableIngestImageOutput] = useState("");
-  const [isIngestingImages, setIsIngestingImages] = useState(false);
   const [availableSubfolders, setAvailableSubfolders] = useState<SubfolderOption[]>([]);
   const [selectedSubfolder, setSelectedSubfolder] = useState<SubfolderOption | null>(null);
   const [subfolderLoading, setSubfolderLoading] = useState(false);
@@ -102,10 +99,7 @@ export const useImageCaptureState = (
     setSaveMessage("");
     setExtractOutput(null);
     setIngestOutput(null);
-    setIngestImageOutput(null);
-    setEditableIngestImageOutput("");
     setIsIngesting(false);
-    setIsIngestingImages(false);
     setShowSummaryOverlay(false);
     setShowGallery(false);
     setAvailableSubfolders([]);
@@ -136,8 +130,6 @@ export const useImageCaptureState = (
         setSaveMessage("");
         setExtractOutput(null);
         setIngestOutput(null);
-        setIngestImageOutput(null);
-        setEditableIngestImageOutput("");
         setShowGallery(false);
         setImages((prev) => [...prev, { url: previewUrl, file: normalizedFile }]);
       } catch (err) {
@@ -175,8 +167,6 @@ export const useImageCaptureState = (
     setSaveMessage("");
     setError("");
     setIngestOutput(null);
-    setIngestImageOutput(null);
-    setEditableIngestImageOutput("");
     
     const setSummaries = (newSummary: string) => {
       setDraftSummary(newSummary);
@@ -186,35 +176,6 @@ export const useImageCaptureState = (
     const didSummarize = await handleSummary({
       images,
       route: "/api/extract-advanced",
-      setIsSaving,
-      setSummary: setSummaries,
-      setExtractOutput,
-      setSummaryImageUrl,
-      setShowSummaryOverlay,
-      setError,
-    });
-
-    if (didSummarize && images.length > 0) {
-      setShowGallery(true);
-      playSuccessChime();
-    }
-  }, [images]);
-
-  const handleSummarizeHf = useCallback(async () => {
-    setSaveMessage("");
-    setError("");
-    setIngestOutput(null);
-    setIngestImageOutput(null);
-    setEditableIngestImageOutput("");
-
-    const setSummaries = (newSummary: string) => {
-      setDraftSummary(newSummary);
-      setEditableSummary(newSummary);
-    };
-
-    const didSummarize = await handleSummary({
-      images,
-      route: "/api/extract-hf",
       setIsSaving,
       setSummary: setSummaries,
       setExtractOutput,
@@ -339,114 +300,11 @@ export const useImageCaptureState = (
     }
   }, [extractOutput, isIngesting]);
 
-  const handleIngestHf = useCallback(async () => {
-    if (isIngesting || !extractOutput) return;
-
-    setIsIngesting(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/ingest-hf", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(extractOutput),
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string; ingestOutput?: IngestOutput }
-        | IngestOutput
-        | null;
-
-      if (!response.ok) {
-        throw new Error(
-          payload && "error" in payload ? payload.error || "Unable to ingest document." : "Unable to ingest document.",
-        );
-      }
-
-      let resolvedOutput: IngestOutput | null = null;
-
-      if (payload && typeof payload === "object" && "ingestOutput" in payload) {
-        resolvedOutput = payload.ingestOutput ?? null;
-      } else {
-        resolvedOutput = payload as IngestOutput | null;
-      }
-
-      if (!resolvedOutput) {
-        throw new Error("Ingest endpoint returned an empty response.");
-      }
-
-      setIngestOutput(resolvedOutput);
-      playSuccessChime();
-    } catch (err) {
-      console.error("Failed to ingest document:", err);
-      setError(err instanceof Error ? err.message : "Unable to ingest document.");
-    } finally {
-      setIsIngesting(false);
-    }
-  }, [extractOutput, isIngesting]);
-
-  const handleIngestImages = useCallback(async () => {
-    if (isIngestingImages || images.length === 0) return;
-
-    setIsIngestingImages(true);
-    setError("");
-
-    try {
-      const formData = new FormData();
-
-      images.forEach((image) => {
-        formData.append("image", image.file, image.file.name);
-      });
-
-      const response = await fetch("/api/ingest-image", {
-        method: "POST",
-        body: formData,
-      });
-
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string; ingestImageOutput?: IngestOutput }
-        | IngestOutput
-        | null;
-
-      if (!response.ok) {
-        throw new Error(
-          payload && "error" in payload
-            ? payload.error || "Unable to ingest images."
-            : "Unable to ingest images.",
-        );
-      }
-
-      let resolvedOutput: IngestOutput | null = null;
-
-      if (payload && typeof payload === "object" && "ingestImageOutput" in payload) {
-        resolvedOutput = payload.ingestImageOutput ?? null;
-      } else {
-        resolvedOutput = payload as IngestOutput | null;
-      }
-
-      if (!resolvedOutput) {
-        throw new Error("Ingest-image endpoint returned an empty response.");
-      }
-
-      setIngestImageOutput(resolvedOutput);
-      setEditableIngestImageOutput(JSON.stringify(resolvedOutput, null, 2));
-      playSuccessChime();
-    } catch (err) {
-      console.error("Failed to ingest images:", err);
-      setError(err instanceof Error ? err.message : "Unable to ingest images.");
-    } finally {
-      setIsIngestingImages(false);
-    }
-  }, [images, isIngestingImages]);
-
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;
 
-    const trimmedIngestJson = editableIngestImageOutput.trim();
-    if (!trimmedIngestJson) {
-      setError("Please ensure ingest-image-output.json is not empty before saving.");
+    if (!ingestOutput) {
+      setError("Please run Ingest before saving.");
       return;
     }
 
@@ -455,8 +313,7 @@ export const useImageCaptureState = (
 
     await handleSave({
       images,
-      draftSummary,
-      ingestImageOutputJson: trimmedIngestJson,
+      ingestOutputJson: JSON.stringify(ingestOutput, null, 2),
       selectedCanon,
       selectedSubfolder,
       setIsSaving,
@@ -478,8 +335,6 @@ export const useImageCaptureState = (
         setEditableSummary("");
         setExtractOutput(null);
         setIngestOutput(null);
-        setIngestImageOutput(null);
-        setEditableIngestImageOutput("");
         setSelectedCanon(null);
         setSelectedSubfolder(null);
         playSuccessChime();
@@ -490,9 +345,8 @@ export const useImageCaptureState = (
   }, [
     session,
     isSaving,
+    ingestOutput,
     images,
-    draftSummary,
-    editableIngestImageOutput,
     selectedCanon,
     selectedSubfolder,
     onOpenChange,
@@ -517,9 +371,6 @@ export const useImageCaptureState = (
     extractOutput,
     ingestOutput,
     isIngesting,
-    ingestImageOutput,
-    editableIngestImageOutput,
-    isIngestingImages,
     availableSubfolders,
     selectedSubfolder,
     subfolderLoading,
@@ -537,15 +388,11 @@ export const useImageCaptureState = (
     handleAlbumSelect,
     handleCameraSwitch,
     handleSummarize,
-    handleSummarizeHf,
     handleIngest,
-    handleIngestHf,
-    handleIngestImages,
     handleSaveImages,
     handleClose,
     setCaptureSource,
     setEditableSummary,
-    setEditableIngestImageOutput,
     setDraftSummary,
     setShowGallery,
     setCameraError,

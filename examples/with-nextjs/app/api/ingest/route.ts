@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { GPT_Router } from "@/lib/gptRouter";
+import { buildAdvancedOcrServiceUrl, getAdvancedOcrBearerToken } from "@/lib/extractAdvancedService";
 import {
   CANONICALS_BIBLE_SOURCE,
   SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE,
 } from "@/lib/jsonCanonSources";
+import fs from "fs/promises";
+import path from "path";
 
 export const runtime = "nodejs";
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || "";
-const OPENAI_INGEST_MODEL = process.env.OPENAI_INGEST_MODEL?.trim() || "gpt-4.1-mini";
 
 interface ExtractPage {
   page?: number;
@@ -49,51 +48,6 @@ interface IngestOutput {
   };
 }
 
-const INGEST_OUTPUT_SCHEMA = {
-  name: "ingest_output",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      documentDate: { type: "string" },
-      title: { type: "string" },
-      issuer_name: { type: "string" },
-      subject_category: { type: "string" },
-      doc_class: { type: "string" },
-      action_in_verb: { type: "string" },
-      abstractSummary: { type: "string" },
-      normalizedText: { type: "string" },
-      warnings: {
-        type: "array",
-        items: { type: "string" },
-      },
-      stats: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          sectionCount: { type: "number" },
-          pageCount: { type: "number" },
-          characterCount: { type: "number" },
-        },
-        required: ["sectionCount", "pageCount", "characterCount"],
-      },
-    },
-    required: [
-      "documentDate",
-      "title",
-      "issuer_name",
-      "subject_category",
-      "doc_class",
-      "action_in_verb",
-      "abstractSummary",
-      "normalizedText",
-      "warnings",
-      "stats",
-    ],
-  },
-} as const;
-
 interface CanonicalIssuerEntry {
   master?: string;
   aliases?: string[];
@@ -110,6 +64,23 @@ interface TaxonomyEntry {
 
 const normalizeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
+
+const resolveLocalPath = (source: string) => {
+  const looksLikeDriveId = /^[a-zA-Z0-9_-]{10,}$/.test(source) && !source.includes("/");
+  if (looksLikeDriveId || source.startsWith("http")) return null;
+
+  return path.isAbsolute(source) ? source : path.join(process.cwd(), source);
+};
+
+const fetchJsonSource = async (source: string) => {
+  const resolvedPath = resolveLocalPath(source);
+  if (!resolvedPath) {
+    throw new Error("Ingest route only supports local JSON sources in this workspace.");
+  }
+
+  const fileContent = await fs.readFile(resolvedPath, "utf-8");
+  return JSON.parse(fileContent);
+};
 
 const buildCanonPromptBlock = ({
   issuers,
@@ -223,18 +194,49 @@ const validateExtractOutput = (value: unknown): ExtractOutput | null => {
   };
 };
 
-const parseStructuredContent = (content: unknown): IngestOutput => {
-  if (typeof content !== "string" || !content.trim()) {
-    throw new Error("OpenAI ingest response did not include JSON content.");
+const validateIngestOutput = (value: unknown): IngestOutput | null => {
+  if (!value || typeof value !== "object") return null;
+
+  const payload = value as Partial<IngestOutput>;
+
+  if (
+    typeof payload.documentDate !== "string" ||
+    typeof payload.title !== "string" ||
+    typeof payload.issuer_name !== "string" ||
+    typeof payload.subject_category !== "string" ||
+    typeof payload.doc_class !== "string" ||
+    typeof payload.action_in_verb !== "string" ||
+    typeof payload.abstractSummary !== "string" ||
+    typeof payload.normalizedText !== "string" ||
+    !Array.isArray(payload.warnings) ||
+    !payload.stats ||
+    typeof payload.stats.sectionCount !== "number" ||
+    typeof payload.stats.pageCount !== "number" ||
+    typeof payload.stats.characterCount !== "number"
+  ) {
+    return null;
   }
 
-  return JSON.parse(content) as IngestOutput;
+  return {
+    documentDate: payload.documentDate,
+    title: payload.title,
+    issuer_name: payload.issuer_name,
+    subject_category: payload.subject_category,
+    doc_class: payload.doc_class,
+    action_in_verb: payload.action_in_verb,
+    abstractSummary: payload.abstractSummary,
+    normalizedText: payload.normalizedText,
+    warnings: payload.warnings.filter((item): item is string => typeof item === "string"),
+    stats: payload.stats,
+  };
 };
 
 export async function POST(req: Request) {
   try {
-    if (!OPENAI_API_KEY) {
-      throw new Error("Missing OPENAI_API_KEY");
+    const ingestServiceUrl = buildAdvancedOcrServiceUrl("/ingest");
+
+    if (!ingestServiceUrl) {
+      throw new Error("Missing PADDLE_OCR_URL");
     }
 
     const extractOutput = validateExtractOutput(await req.json());
@@ -244,8 +246,8 @@ export async function POST(req: Request) {
     }
 
     const [canonicalData, taxonomyData] = await Promise.all([
-      GPT_Router._fetchFile(CANONICALS_BIBLE_SOURCE),
-      GPT_Router._fetchFile(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
+      fetchJsonSource(CANONICALS_BIBLE_SOURCE),
+      fetchJsonSource(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
     ]);
 
     const issuers = Array.isArray(canonicalData?.issuers)
@@ -256,30 +258,18 @@ export async function POST(req: Request) {
       : [];
     const canonPromptBlock = buildCanonPromptBlock({ issuers, taxonomy });
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const bearerToken = getAdvancedOcrBearerToken();
+    const response = await fetch(ingestServiceUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
       },
       body: JSON.stringify({
-        model: OPENAI_INGEST_MODEL,
-        temperature: 0,
-        response_format: {
-          type: "json_schema",
-          json_schema: INGEST_OUTPUT_SCHEMA,
-        },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
-          },
-          {
-            role: "user",
-            content: getPrompt(extractOutput, canonPromptBlock),
-          },
-        ],
+        ...extractOutput,
+        systemPrompt:
+          "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
+        userPrompt: getPrompt(extractOutput, canonPromptBlock),
       }),
       cache: "no-store",
     });
@@ -291,29 +281,24 @@ export async function POST(req: Request) {
         (data &&
           typeof data === "object" &&
           "error" in data &&
-          data.error &&
-          typeof data.error === "object" &&
-          "message" in data.error &&
-          typeof data.error.message === "string" &&
-          data.error.message) ||
-        `OpenAI ingest request failed with status ${response.status}.`;
+          typeof data.error === "string" &&
+          data.error) ||
+        `HF ingest request failed with status ${response.status}.`;
 
       return NextResponse.json({ error: message }, { status: response.status });
     }
 
-    const message = data?.choices?.[0]?.message;
-
-    if (typeof message?.refusal === "string" && message.refusal.trim()) {
-      return NextResponse.json({ error: message.refusal }, { status: 422 });
+    const ingestOutput = validateIngestOutput(data);
+    if (!ingestOutput) {
+      return NextResponse.json({ error: "HF ingest response did not match the expected shape." }, { status: 502 });
     }
 
-    const ingestOutput = parseStructuredContent(message?.content);
     ingestOutput.issuer_name = normalizeIssuerName(ingestOutput.issuer_name, issuers);
 
     return NextResponse.json({ ingestOutput });
   } catch (err: unknown) {
     const message =
-      err instanceof Error ? err.message : "Unable to generate ingest output with OpenAI.";
+      err instanceof Error ? err.message : "Unable to generate ingest output with HF.";
     console.error("Ingest Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }

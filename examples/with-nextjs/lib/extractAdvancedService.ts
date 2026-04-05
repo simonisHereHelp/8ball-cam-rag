@@ -1,13 +1,24 @@
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-const getAdvancedOcrServiceUrl = () =>
-  process.env.PADDLE_OCR_URL?.trim() || "";
+export const getAdvancedOcrServiceBaseUrl = () =>
+  process.env.PADDLE_OCR_URL?.trim().replace(/\/+$/g, "") || "";
 
-const getAdvancedOcrBearerToken = () =>
+export const getAdvancedOcrBearerToken = () =>
   process.env.PADDLE_OCR_BEARER_TOKEN?.trim() || "";
 
-const getAdvancedOcrTimeoutMs = () =>
+export const getAdvancedOcrTimeoutMs = () =>
   Number(process.env.PADDLE_OCR_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+
+export const buildAdvancedOcrServiceUrl = (path: string) => {
+  const baseUrl = getAdvancedOcrServiceBaseUrl();
+
+  if (!baseUrl) {
+    return "";
+  }
+
+  const normalizedPath = path.replace(/^\/+/g, "");
+  return `${baseUrl}/${normalizedPath}`;
+};
 
 export interface AdvancedExtractResult {
   markdown: string;
@@ -69,7 +80,7 @@ export async function extractAdvancedMarkdown(
   files: File[],
   options: ExtractAdvancedOptions = {},
 ): Promise<AdvancedExtractResult> {
-  const serviceUrl = getAdvancedOcrServiceUrl();
+  const serviceUrl = buildAdvancedOcrServiceUrl("/extract");
 
   if (!serviceUrl) {
     throw new Error("Missing PADDLE_OCR_URL");

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { Buffer } from "buffer";
 import { driveSaveFiles } from "@/lib/driveSaveFiles";
-import { GPT_Router } from "@/lib/gptRouter";
 import {
   DRIVE_ACTIVE_SUBFOLDER_SOURCE,
   DRIVE_FALLBACK_FOLDER_ID,
 } from "@/lib/jsonCanonSources";
+import { JsonPromptLoader } from "@/lib/jsonPromptLoader";
 import { normalizeFilename } from "@/lib/normalizeFilename";
 
 interface IngestOutputPayload {
@@ -215,7 +215,7 @@ ${imageSection}
 }
 
 const resolveFolderBySubjectCategory = async (subjectCategory: string, baseFolderId: string) => {
-  const config = await GPT_Router.fetchJsonSource(DRIVE_ACTIVE_SUBFOLDER_SOURCE).catch(() => null);
+  const config = await JsonPromptLoader.fetchJsonSource(DRIVE_ACTIVE_SUBFOLDER_SOURCE).catch(() => null);
   const subfolders = Array.isArray((config as { subfolders?: ActiveSubfolder[] } | null)?.subfolders)
     ? ((config as { subfolders?: ActiveSubfolder[] }).subfolders ?? [])
     : Array.isArray(config)
@@ -251,15 +251,14 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const ingestImageOutputJson =
-      (formData.get("ingestImageOutputJson") as string | null)?.trim() ?? "";
+    const ingestOutputJson = (formData.get("ingestOutputJson") as string | null)?.trim() ?? "";
     const files = formData.getAll("files").filter((file): file is File => file instanceof File);
 
-    if (!ingestImageOutputJson || !files.length) {
+    if (!ingestOutputJson || !files.length) {
       return NextResponse.json({ error: "Ingest JSON and files are required." }, { status: 400 });
     }
 
-    const ingestOutput = parseIngestOutput(ingestImageOutputJson);
+    const ingestOutput = parseIngestOutput(ingestOutputJson);
     const normalizedSetName = deriveSetNameFromIngestOutput(ingestOutput);
 
     const baseFolderId = ROOT_DRIVE_FOLDER_ID || BASE_DRIVE_FOLDER_ID;
