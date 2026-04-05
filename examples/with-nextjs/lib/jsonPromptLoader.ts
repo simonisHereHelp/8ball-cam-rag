@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { auth } from "@/auth";
 
 const resolveLocalPath = (source: string) => {
   const looksLikeDriveId = /^[a-zA-Z0-9_-]{10,}$/.test(source) && !source.includes("/");
@@ -9,16 +10,35 @@ const resolveLocalPath = (source: string) => {
 };
 
 export class JsonPromptLoader {
-  static async fetchJsonSource(source: string): Promise<any> {
+  static async fetchJsonSource(source: string, useAuth: boolean = false): Promise<any> {
     if (!source) throw new Error("Source is required");
 
     const resolvedPath = resolveLocalPath(source);
-    if (!resolvedPath) {
-      throw new Error("Only local JSON sources are supported in this workspace.");
+    if (resolvedPath) {
+      const fileContent = await fs.readFile(resolvedPath, "utf-8");
+      return JSON.parse(fileContent);
     }
 
-    const fileContent = await fs.readFile(resolvedPath, "utf-8");
-    return JSON.parse(fileContent);
+    let url = source.startsWith("http")
+      ? source
+      : `https://drive.google.com/uc?export=download&id=${source}`;
+    const headers: HeadersInit = {};
+
+    if (useAuth && !source.startsWith("http")) {
+      const session = await auth();
+      const accessToken = (session as any)?.accessToken;
+      if (!accessToken) throw new Error("Missing Google Drive access token");
+
+      url = `https://www.googleapis.com/drive/v3/files/${source}?alt=media&supportsAllDrives=true`;
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    const response = await fetch(url, { headers, cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Fetch source failed (Status: ${response.status})`);
+    }
+
+    return response.json();
   }
 
   static async getSystemPrompt(promptSource: string): Promise<string> {
