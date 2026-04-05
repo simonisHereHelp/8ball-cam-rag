@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { buildAdvancedOcrServiceUrl, getAdvancedOcrBearerToken } from "@/lib/extractAdvancedService";
+import { JsonPromptLoader } from "@/lib/jsonPromptLoader";
 import {
   CANONICALS_BIBLE_SOURCE,
   SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE,
 } from "@/lib/jsonCanonSources";
-import fs from "fs/promises";
-import path from "path";
 
 export const runtime = "nodejs";
 
@@ -64,23 +63,6 @@ interface TaxonomyEntry {
 
 const normalizeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
-
-const resolveLocalPath = (source: string) => {
-  const looksLikeDriveId = /^[a-zA-Z0-9_-]{10,}$/.test(source) && !source.includes("/");
-  if (looksLikeDriveId || source.startsWith("http")) return null;
-
-  return path.isAbsolute(source) ? source : path.join(process.cwd(), source);
-};
-
-const fetchJsonSource = async (source: string) => {
-  const resolvedPath = resolveLocalPath(source);
-  if (!resolvedPath) {
-    throw new Error("Ingest route only supports local JSON sources in this workspace.");
-  }
-
-  const fileContent = await fs.readFile(resolvedPath, "utf-8");
-  return JSON.parse(fileContent);
-};
 
 const buildCanonPromptBlock = ({
   issuers,
@@ -246,8 +228,8 @@ export async function POST(req: Request) {
     }
 
     const [canonicalData, taxonomyData] = await Promise.all([
-      fetchJsonSource(CANONICALS_BIBLE_SOURCE),
-      fetchJsonSource(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
+      JsonPromptLoader.fetchJsonSource(CANONICALS_BIBLE_SOURCE),
+      JsonPromptLoader.fetchJsonSource(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
     ]);
 
     const issuers = Array.isArray(canonicalData?.issuers)

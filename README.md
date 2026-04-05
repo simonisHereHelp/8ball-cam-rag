@@ -21,9 +21,9 @@ Camera-first document capture flow built on `react-web-camera`, a Next.js exampl
 
 ## Prompt and canon sources
 
-The Next.js app reads JSON config from `json_canon/` by default, with env overrides handled by `examples/with-nextjs/lib/jsonCanonSources.ts`.
+The Next.js app reads JSON config from Drive IDs or direct JSON URLs, with env resolution handled by `examples/with-nextjs/lib/jsonCanonSources.ts`.
 
-Main files:
+Main sources:
 
 - `prompt_extract.json`
 - `canonicals_bible.json`
@@ -43,8 +43,7 @@ Required app env:
 Optional:
 
 - `DRIVE_FALLBACK_FOLDER_ID`
-- `JSON_CANON_BASE_PATH`
-- prompt/canon source override env vars from `jsonCanonSources.ts`
+- prompt/canon source env vars from `jsonCanonSources.ts`
 
 ## Notes
 
