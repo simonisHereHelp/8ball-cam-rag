@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { buildAdvancedOcrServiceUrl, getAdvancedOcrBearerToken } from "@/lib/extractAdvancedService";
 import { JsonPromptLoader } from "@/lib/jsonPromptLoader";
+import {
+  buildQwenIngestServiceUrl,
+  getQwenIngestBearerToken,
+  getQwenIngestTimeoutMs,
+} from "@/lib/qwenIngestService";
 import {
   CANONICALS_BIBLE_SOURCE,
   SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE,
@@ -215,10 +219,10 @@ const validateIngestOutput = (value: unknown): IngestOutput | null => {
 
 export async function POST(req: Request) {
   try {
-    const ingestServiceUrl = buildAdvancedOcrServiceUrl("/ingest");
+    const ingestServiceUrl = buildQwenIngestServiceUrl("/ingest");
 
     if (!ingestServiceUrl) {
-      throw new Error("Missing PADDLE_OCR_URL");
+      throw new Error("Missing QWEN_HF_URL");
     }
 
     const extractOutput = validateExtractOutput(await req.json());
@@ -240,23 +244,41 @@ export async function POST(req: Request) {
       : [];
     const canonPromptBlock = buildCanonPromptBlock({ issuers, taxonomy });
 
-    const bearerToken = getAdvancedOcrBearerToken();
-    const response = await fetch(ingestServiceUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-      },
-      body: JSON.stringify({
-        ...extractOutput,
-        systemPrompt:
-          "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
-        userPrompt: getPrompt(extractOutput, canonPromptBlock),
-      }),
-      cache: "no-store",
-    });
+    const bearerToken = getQwenIngestBearerToken();
+    const timeoutMs = getQwenIngestTimeoutMs();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const data = await response.json().catch(() => null);
+    let response: Response;
+    let data: unknown = null;
+
+    try {
+      response = await fetch(ingestServiceUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        },
+        body: JSON.stringify({
+          ...extractOutput,
+          systemPrompt:
+            "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
+          userPrompt: getPrompt(extractOutput, canonPromptBlock),
+        }),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+
+      data = await response.json().catch(() => null);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("QWEN ingest service timed out.");
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const message =
@@ -265,7 +287,7 @@ export async function POST(req: Request) {
           "error" in data &&
           typeof data.error === "string" &&
           data.error) ||
-        `HF ingest request failed with status ${response.status}.`;
+        `QWEN ingest request failed with status ${response.status}.`;
 
       return NextResponse.json({ error: message }, { status: response.status });
     }
@@ -280,7 +302,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ingestOutput });
   } catch (err: unknown) {
     const message =
-      err instanceof Error ? err.message : "Unable to generate ingest output with HF.";
+      err instanceof Error ? err.message : "Unable to generate ingest output with QWEN.";
     console.error("Ingest Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
