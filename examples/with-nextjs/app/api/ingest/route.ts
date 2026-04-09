@@ -68,6 +68,12 @@ interface CanonicalIssuerEntry {
   aliases?: string[];
 }
 
+interface CanonicalsBible {
+  issuers?: CanonicalIssuerEntry[];
+  typeOfDoc?: unknown[];
+  action?: unknown[];
+}
+
 interface TaxonomyEntry {
   topic?: string;
   description?: string;
@@ -81,34 +87,25 @@ const normalizeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
 const buildCanonPromptBlock = ({
-  issuers,
+  canonicals,
   taxonomy,
 }: {
-  issuers: CanonicalIssuerEntry[];
+  canonicals: CanonicalsBible;
   taxonomy: TaxonomyEntry[];
 }) => {
-  const issuerMapping = issuers.reduce<Record<string, string[]>>((acc, entry) => {
-    const master = normalizeString(entry.master);
-    if (!master) return acc;
-    acc[master] = Array.isArray(entry.aliases)
-      ? entry.aliases.filter((alias): alias is string => typeof alias === "string" && alias.trim().length > 0)
-      : [];
-    return acc;
-  }, {});
-
-  const subjectRules = taxonomy.map((entry) => ({
-    subject_category: normalizeString(entry.topic),
-    description: normalizeString(entry.description),
-    keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
-    excluded_keywords: Array.isArray(entry.excluded_keywords) ? entry.excluded_keywords : [],
-    doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
-    action_in_verbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
-  }));
-
   return JSON.stringify(
     {
-      issuerCanonicals: issuerMapping,
-      subjectRules,
+      canonicals,
+      canonJson: {
+        subfolders: taxonomy.map((entry) => ({
+          topic: normalizeString(entry.topic),
+          description: normalizeString(entry.description),
+          keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+          excluded_keywords: Array.isArray(entry.excluded_keywords) ? entry.excluded_keywords : [],
+          doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
+          actionVerbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
+        })),
+      },
     },
     null,
     2,
@@ -151,9 +148,14 @@ Requirements:
 - documentDate should contain the canonical document date when available, preferably as YYYYMMDD or a stable date-tag string such as "doc-20251127-001".
 - title should use extract_output.title when present; otherwise infer a concise title from the document.
 - issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
-- subject_category: reason about the topic of this document and choose the single best matching canonized subject_category from the bible. Do not invent values outside the bible.
-- doc_class: reason about the general document form, such as invoice, notice, statement, application form, and choose the best matching canonized doc_class allowed by the selected subject_category.
-- action_in_verb: reason about the best action implied for the addressee and choose the best matching canonized action_in_verb allowed by the selected subject_category.
+- subject_category must be exactly one topic from the canon JSON.
+- doc_class must be chosen only from the selected topic's doc_classes.
+- action_in_verb must be chosen only from the selected topic's actionVerbs.
+- Use keyword and excluded_keywords carefully.
+- If multiple topics seem possible, choose the single best one.
+- If no topic matches confidently, use subject_category = Z-others.
+- If doc_class is uncertain, choose the closest valid value from that selected topic.
+- If action_in_verb is uncertain, choose the closest valid value from that selected topic.
 - abstractSummary should use extract_output.abstract when present; otherwise create a short summary.
 - normalizedText should be the normalized plain text derived from the best available source, preferring plainText, then markdown/pages.
 - normalizedText must begin with a markdown header in this format:
@@ -172,7 +174,7 @@ Requirements:
 - stats.characterCount should reflect normalizedText.length.
 - Do not include extra keys.
 
-Canon data:
+Canonicals and canon JSON:
 ${canonPromptBlock}
 
 extract_output JSON:
@@ -269,7 +271,10 @@ export async function POST(req: Request) {
     const taxonomy = Array.isArray(taxonomyData?.subfolders)
       ? (taxonomyData.subfolders as TaxonomyEntry[])
       : [];
-    const canonPromptBlock = buildCanonPromptBlock({ issuers, taxonomy });
+    const canonPromptBlock = buildCanonPromptBlock({
+      canonicals: (canonicalData ?? {}) as CanonicalsBible,
+      taxonomy,
+    });
 
     const bearerToken = getQwenIngestBearerToken();
     const timeoutMs = getQwenIngestTimeoutMs();
