@@ -34,6 +34,18 @@ interface ExtractOutput {
   pages?: ExtractPage[];
 }
 
+interface IngestExtractPage {
+  page: number;
+}
+
+interface IngestExtractOutput {
+  markdown: string;
+  plainText: string;
+  title: string;
+  abstract: string;
+  pages: IngestExtractPage[];
+}
+
 interface IngestOutput {
   documentDate: string;
   title: string;
@@ -128,7 +140,7 @@ const normalizeIssuerName = (
 };
 
 const getPrompt = (
-  extractOutput: ExtractOutput,
+  extractOutput: IngestExtractOutput,
   canonPromptBlock: string,
 ) => `
 Transform the provided extract_output JSON into ingest_output JSON.
@@ -179,6 +191,19 @@ const validateExtractOutput = (value: unknown): ExtractOutput | null => {
     pages: Array.isArray(payload.pages) ? payload.pages : [],
   };
 };
+
+const compactExtractOutputForIngest = (extractOutput: ExtractOutput): IngestExtractOutput => ({
+  markdown: typeof extractOutput.markdown === "string" ? extractOutput.markdown : "",
+  plainText: typeof extractOutput.plainText === "string" ? extractOutput.plainText : "",
+  title: typeof extractOutput.title === "string" ? extractOutput.title : "",
+  abstract: typeof extractOutput.abstract === "string" ? extractOutput.abstract : "",
+  // Keep only page numbering for stats/page count. The actual text lives in the top-level fields.
+  pages: Array.isArray(extractOutput.pages)
+    ? extractOutput.pages.map((page, index) => ({
+        page: typeof page?.page === "number" ? page.page : index + 1,
+      }))
+    : [],
+});
 
 const validateIngestOutput = (value: unknown): IngestOutput | null => {
   if (!value || typeof value !== "object") return null;
@@ -231,6 +256,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid extract_output payload." }, { status: 400 });
     }
 
+    const compactExtractOutput = compactExtractOutputForIngest(extractOutput);
+
     const [canonicalData, taxonomyData] = await Promise.all([
       JsonPromptLoader.fetchJsonSource(CANONICALS_BIBLE_SOURCE),
       JsonPromptLoader.fetchJsonSource(SUBJECT_CAT_DOC_CLASS_ACTION_SOURCE),
@@ -260,10 +287,10 @@ export async function POST(req: Request) {
           ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
         },
         body: JSON.stringify({
-          ...extractOutput,
+          ...compactExtractOutput,
           systemPrompt:
             "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
-          userPrompt: getPrompt(extractOutput, canonPromptBlock),
+          userPrompt: getPrompt(compactExtractOutput, canonPromptBlock),
         }),
         signal: controller.signal,
         cache: "no-store",

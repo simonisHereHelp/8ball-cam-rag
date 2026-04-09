@@ -228,16 +228,48 @@ export const useImageCaptureState = (
     setSelectedSubfolder(subfolder);
   }, []);
 
+  const buildEditedExtractOutput = useCallback((): ExtractOutput | null => {
+    if (!extractOutput) return null;
+
+    const editedText = editableSummary.trim();
+    if (!editedText) {
+      return {
+        ...extractOutput,
+        markdown: "",
+        plainText: "",
+      };
+    }
+
+    return {
+      ...extractOutput,
+      markdown: editableSummary,
+      plainText: editableSummary,
+    };
+  }, [editableSummary, extractOutput]);
+
+  const handleEditableSummaryChange = useCallback((summary: string) => {
+    setEditableSummary(summary);
+    setExtractOutput((current) =>
+      current
+        ? {
+            ...current,
+            markdown: summary,
+            plainText: summary,
+          }
+        : current,
+    );
+    setIngestOutput(null);
+  }, []);
+
   const selectCanon = useCallback((canon: IssuerCanonEntry) => {
     setSelectedCanon(canon);
-    setEditableSummary((current) =>
-      applyCanonToSummary({
-        canon,
-        currentSummary: current,
-        draftSummary,
-      }),
-    );
-  }, [draftSummary]);
+    const nextSummary = applyCanonToSummary({
+      canon,
+      currentSummary: editableSummary,
+      draftSummary,
+    });
+    handleEditableSummaryChange(nextSummary);
+  }, [draftSummary, editableSummary, handleEditableSummaryChange]);
 
   // Auto-refresh canons when gallery opens
   useEffect(() => {
@@ -259,12 +291,17 @@ export const useImageCaptureState = (
     setError("");
 
     try {
+      const currentExtractOutput = buildEditedExtractOutput();
+      if (!currentExtractOutput) {
+        throw new Error("No extracted text is available to ingest.");
+      }
+
       const response = await fetch("/api/ingest", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(extractOutput),
+        body: JSON.stringify(currentExtractOutput),
       });
 
       const payload = (await response.json().catch(() => null)) as
@@ -298,7 +335,7 @@ export const useImageCaptureState = (
     } finally {
       setIsIngesting(false);
     }
-  }, [extractOutput, isIngesting]);
+  }, [buildEditedExtractOutput, extractOutput, isIngesting]);
 
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;
@@ -392,7 +429,7 @@ export const useImageCaptureState = (
     handleSaveImages,
     handleClose,
     setCaptureSource,
-    setEditableSummary,
+    setEditableSummary: handleEditableSummaryChange,
     setDraftSummary,
     setShowGallery,
     setCameraError,

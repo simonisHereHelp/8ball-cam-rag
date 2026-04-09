@@ -31,14 +31,14 @@ export function GalleryView({ state, actions }: { state: State; actions: Actions
           ))}
         </div>
 
-        {/* Summary Editor Section */}
+        {/* Extract Editor Section */}
         <div className="space-y-4">
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-blue-300">EDIT SUMMARY</label>
+            <label className="text-xs font-bold text-blue-300">EDIT EXTRACTED TEXT</label>
             <textarea
               value={state.editableSummary}
               onChange={(e) => actions.setEditableSummary(e.target.value)}
-              placeholder="Add your summary here..."
+              placeholder="Review and edit the extracted text here..."
               className="w-full min-h-[150px] bg-white/5 border border-white/10 rounded-lg p-3 text-sm text-white focus:ring-1 focus:ring-blue-500 outline-none"
             />
           </div>

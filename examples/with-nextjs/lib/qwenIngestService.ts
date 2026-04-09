@@ -1,4 +1,4 @@
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
 
 export const getQwenIngestServiceBaseUrl = () =>
   process.env.QWEN_HF_URL?.trim().replace(/\/+$/g, "") || "";
