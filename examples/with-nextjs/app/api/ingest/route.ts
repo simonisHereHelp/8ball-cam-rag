@@ -95,7 +95,6 @@ const buildCanonPromptBlock = ({
 }) => {
   return JSON.stringify(
     {
-      canonicals,
       canonJson: {
         subfolders: taxonomy.map((entry) => ({
           topic: normalizeString(entry.topic),
@@ -105,6 +104,14 @@ const buildCanonPromptBlock = ({
           doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
           actionVerbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
         })),
+      },
+      canonicalIssuers: {
+        issuers: Array.isArray(canonicals.issuers)
+          ? canonicals.issuers.map((entry) => ({
+              master: normalizeString(entry.master),
+              aliases: Array.isArray(entry.aliases) ? entry.aliases : [],
+            }))
+          : [],
       },
     },
     null,
@@ -142,23 +149,24 @@ const getPrompt = (
 ) => `
 Transform the provided extract_output JSON into ingest_output JSON.
 
-Requirements:
-- Return JSON only.
-- Preserve the exact output shape and field names.
-- documentDate should contain the canonical document date when available, preferably as YYYYMMDD or a stable date-tag string such as "doc-20251127-001".
-- title should use extract_output.title when present; otherwise infer a concise title from the document.
-- issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
-- subject_category must be exactly one topic from the canon JSON.
-- doc_class must be chosen only from the selected topic's doc_classes.
-- action_in_verb must be chosen only from the selected topic's actionVerbs.
-- Use keyword and excluded_keywords carefully.
-- If multiple topics seem possible, choose the single best one.
-- If no topic matches confidently, use subject_category = Z-others.
-- If doc_class is uncertain, choose the closest valid value from that selected topic.
-- If action_in_verb is uncertain, choose the closest valid value from that selected topic.
-- abstractSummary should use extract_output.abstract when present; otherwise create a short summary.
-- normalizedText should be the normalized plain text derived from the best available source, preferring plainText, then markdown/pages.
-- normalizedText must begin with a markdown header in this format:
+Classification rules:
+1. Return JSON only.
+2. Do not include any extra keys.
+3. Preserve the exact output shape and field names.
+4. documentDate should contain the canonical document date when available, preferably as YYYYMMDD.
+5. title should use extract_output.title when present; otherwise infer a concise title from the document.
+6. issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
+7. subject_category must be exactly one topic from the canon JSON.
+8. doc_class must be chosen only from the selected topic's doc_classes.
+9. action_in_verb must be chosen only from the selected topic's actionVerbs.
+10. Use keyword and excluded_keywords carefully.
+11. If multiple topics seem possible, choose the single best one.
+12. If no topic matches confidently, use subject_category = Z-others.
+13. If doc_class is uncertain, choose the closest valid value from that selected topic.
+14. If action_in_verb is uncertain, choose the closest valid value from that selected topic.
+15. abstractSummary should use extract_output.abstract when present; otherwise create a short summary.
+16. normalizedText should be the normalized plain text derived from the best available source, preferring plainText, then markdown/pages.
+17. normalizedText must begin with a markdown header in this format:
   # <title>
 
   ## Meta
@@ -167,14 +175,13 @@ Requirements:
   - subject_category: <subject_category>
   - doc_class: <doc_class>
   - action_in_verb: <action_in_verb>
+18. warnings should contain short strings for uncertainty, missing issuer, or weak OCR signals; otherwise [].
+19. stats.sectionCount should estimate logical sections from headings/structure.
+20. stats.pageCount should equal pages.length when pages exists, otherwise 0.
+21. stats.characterCount should reflect normalizedText.length.
+22. Always populate subject_category, doc_class, action_in_verb, and abstractSummary. Never leave them empty. Use Z-others and the closest valid doc_class/action_in_verb when OCR is weak.
 
-- warnings should contain short strings for uncertainty, missing issuer, or weak OCR signals; otherwise [].
-- stats.sectionCount should estimate logical sections from headings/structure.
-- stats.pageCount should equal pages.length when pages exists, otherwise 0.
-- stats.characterCount should reflect normalizedText.length.
-- Do not include extra keys.
-
-Canonicals and canon JSON:
+Canon JSON:
 ${canonPromptBlock}
 
 extract_output JSON:
@@ -293,8 +300,11 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           ...compactExtractOutput,
-          systemPrompt:
-            "You convert OCR extraction payloads into validated ingest JSON. Always return JSON that matches the requested schema exactly. Choose the best match canonical subject_category, doc_class, and action_in_verb from the canon bible.",
+          systemPrompt: [
+            "You convert OCR extraction payloads into validated ingest JSON.",
+            "Return JSON only.",
+            "Do not include any extra keys.",
+          ].join(" "),
           userPrompt: getPrompt(compactExtractOutput, canonPromptBlock),
         }),
         signal: controller.signal,
