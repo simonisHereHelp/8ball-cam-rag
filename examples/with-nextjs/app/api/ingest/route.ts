@@ -68,12 +68,6 @@ interface CanonicalIssuerEntry {
   aliases?: string[];
 }
 
-interface CanonicalsBible {
-  issuers?: CanonicalIssuerEntry[];
-  typeOfDoc?: unknown[];
-  action?: unknown[];
-}
-
 interface TaxonomyEntry {
   topic?: string;
   description?: string;
@@ -86,38 +80,21 @@ interface TaxonomyEntry {
 const normalizeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
-const buildCanonPromptBlock = ({
-  canonicals,
-  taxonomy,
-}: {
-  canonicals: CanonicalsBible;
-  taxonomy: TaxonomyEntry[];
-}) => {
-  return JSON.stringify(
+const buildCanonJsonText = (taxonomy: TaxonomyEntry[]) =>
+  JSON.stringify(
     {
-      canonJson: {
-        subfolders: taxonomy.map((entry) => ({
-          topic: normalizeString(entry.topic),
-          description: normalizeString(entry.description),
-          keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
-          excluded_keywords: Array.isArray(entry.excluded_keywords) ? entry.excluded_keywords : [],
-          doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
-          actionVerbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
-        })),
-      },
-      canonicalIssuers: {
-        issuers: Array.isArray(canonicals.issuers)
-          ? canonicals.issuers.map((entry) => ({
-              master: normalizeString(entry.master),
-              aliases: Array.isArray(entry.aliases) ? entry.aliases : [],
-            }))
-          : [],
-      },
+      subfolders: taxonomy.map((entry) => ({
+        topic: normalizeString(entry.topic),
+        description: normalizeString(entry.description),
+        keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+        excluded_keywords: Array.isArray(entry.excluded_keywords) ? entry.excluded_keywords : [],
+        doc_classes: Array.isArray(entry.doc_classes) ? entry.doc_classes : [],
+        actionVerbs: Array.isArray(entry.actionVerbs) ? entry.actionVerbs : [],
+      })),
     },
     null,
     2,
   );
-};
 
 const normalizeIssuerName = (
   issuerName: string,
@@ -143,46 +120,31 @@ const normalizeIssuerName = (
   return issuerName;
 };
 
+const getSystemPrompt = () =>
+  `You convert OCR extraction payloads into validated ingest JSON.
+Return JSON only.
+Do not include any extra keys.`;
+
 const getPrompt = (
   extractOutput: IngestExtractOutput,
-  canonPromptBlock: string,
+  canonJsonText: string,
 ) => `
 Transform the provided extract_output JSON into ingest_output JSON.
 
 Classification rules:
-1. Return JSON only.
-2. Do not include any extra keys.
-3. Preserve the exact output shape and field names.
-4. documentDate should contain the canonical document date when available, preferably as YYYYMMDD.
-5. title should use extract_output.title when present; otherwise infer a concise title from the document.
-6. issuer_name should identify the issuing organization if possible and be normalized to a canonical master when it matches a canonical master or alias; otherwise use the detected issuer name unchanged.
-7. subject_category must be exactly one topic from the canon JSON.
-8. doc_class must be chosen only from the selected topic's doc_classes.
-9. action_in_verb must be chosen only from the selected topic's actionVerbs.
-10. Use keyword and excluded_keywords carefully.
-11. If multiple topics seem possible, choose the single best one.
-12. If no topic matches confidently, use subject_category = Z-others.
-13. If doc_class is uncertain, choose the closest valid value from that selected topic.
-14. If action_in_verb is uncertain, choose the closest valid value from that selected topic.
-15. abstractSummary should use extract_output.abstract when present; otherwise create a short summary.
-16. normalizedText should be the normalized plain text derived from the best available source, preferring plainText, then markdown/pages.
-17. normalizedText must begin with a markdown header in this format:
-  # <title>
-
-  ## Meta
-
-  - issuer_name: <issuer_name>
-  - subject_category: <subject_category>
-  - doc_class: <doc_class>
-  - action_in_verb: <action_in_verb>
-18. warnings should contain short strings for uncertainty, missing issuer, or weak OCR signals; otherwise [].
-19. stats.sectionCount should estimate logical sections from headings/structure.
-20. stats.pageCount should equal pages.length when pages exists, otherwise 0.
-21. stats.characterCount should reflect normalizedText.length.
-22. Always populate subject_category, doc_class, action_in_verb, and abstractSummary. Never leave them empty. Use Z-others and the closest valid doc_class/action_in_verb when OCR is weak.
+1. subject_category must be exactly one topic from the canon JSON.
+2. doc_class must be chosen only from the selected topic's doc_classes.
+3. action_in_verb must be chosen only from the selected topic's actionVerbs.
+4. Use keyword and excluded_keywords carefully.
+5. If multiple topics seem possible, choose the single best one.
+6. If no topic matches confidently, use subject_category = Z-others.
+7. If doc_class is uncertain, choose the closest valid value from that selected topic.
+8. If action_in_verb is uncertain, choose the closest valid value from that selected topic.
+9. Preserve the exact output field names and schema.
+10. normalizedText must keep the required header/meta format.
 
 Canon JSON:
-${canonPromptBlock}
+${canonJsonText}
 
 extract_output JSON:
 ${JSON.stringify(extractOutput, null, 2)}
@@ -278,10 +240,7 @@ export async function POST(req: Request) {
     const taxonomy = Array.isArray(taxonomyData?.subfolders)
       ? (taxonomyData.subfolders as TaxonomyEntry[])
       : [];
-    const canonPromptBlock = buildCanonPromptBlock({
-      canonicals: (canonicalData ?? {}) as CanonicalsBible,
-      taxonomy,
-    });
+    const canonJsonText = buildCanonJsonText(taxonomy);
 
     const bearerToken = getQwenIngestBearerToken();
     const timeoutMs = getQwenIngestTimeoutMs();
@@ -300,12 +259,8 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           ...compactExtractOutput,
-          systemPrompt: [
-            "You convert OCR extraction payloads into validated ingest JSON.",
-            "Return JSON only.",
-            "Do not include any extra keys.",
-          ].join(" "),
-          userPrompt: getPrompt(compactExtractOutput, canonPromptBlock),
+          systemPrompt: getSystemPrompt(),
+          userPrompt: getPrompt(compactExtractOutput, canonJsonText),
         }),
         signal: controller.signal,
         cache: "no-store",
@@ -314,7 +269,7 @@ export async function POST(req: Request) {
       data = await response.json().catch(() => null);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("QWEN ingest service timed out.");
+        throw new Error(`QWEN ingest service timed out after ${timeoutMs} ms.`);
       }
 
       throw error;
