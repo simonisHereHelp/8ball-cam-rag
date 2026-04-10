@@ -142,6 +142,11 @@ Classification rules:
 8. If action_in_verb is uncertain, choose the closest valid value from that selected topic.
 9. Preserve the exact output field names and schema.
 10. normalizedText must keep the required header/meta format.
+11. Do not copy raw OCR text into abstractSummary.
+12. abstractSummary must be a meaningful human-readable summary of less than 200 words in the same language as the source.
+13. The summary should contain as many of the 6 W's as possible: what, when, who, whom, where, and why.
+14. Prefer a clean normalized issuer_name, subject_category, doc_class, and action_in_verb header even when OCR is noisy.
+15. For this kind of pension / insurance application document, prefer a concrete classification such as subject_category = TaiwanPersonal, doc_class = ApplicationForm, and action_in_verb = SafeKeep when that is the best fit from the canon JSON.
 
 Canon JSON:
 ${canonJsonText}
