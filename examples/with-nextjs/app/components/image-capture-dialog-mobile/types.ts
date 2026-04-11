@@ -37,20 +37,12 @@ export interface ExtractOutput {
 }
 
 export interface IngestOutput {
-  documentDate: string;
-  title: string;
+  "doc date": string;
   issuer_name: string;
   subject_category: string;
   doc_class: string;
   action_in_verb: string;
   abstractSummary: string;
-  normalizedText: string;
-  warnings: string[];
-  stats: {
-    sectionCount: number;
-    pageCount: number;
-    characterCount: number;
-  };
 }
 
 export interface State {

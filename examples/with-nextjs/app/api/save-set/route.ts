@@ -9,20 +9,12 @@ import { JsonPromptLoader } from "@/lib/jsonPromptLoader";
 import { normalizeFilename } from "@/lib/normalizeFilename";
 
 interface IngestOutputPayload {
-  documentDate: string;
-  title: string;
+  "doc date": string;
   issuer_name: string;
   subject_category: string;
   doc_class: string;
   action_in_verb: string;
   abstractSummary: string;
-  normalizedText: string;
-  warnings: string[];
-  stats: {
-    sectionCount: number;
-    pageCount: number;
-    characterCount: number;
-  };
 }
 
 interface ActiveSubfolder {
@@ -96,14 +88,14 @@ const deriveDatePart = (text: string) => {
 };
 
 const deriveDatePartFromPayload = (payload: IngestOutputPayload) => {
-  const documentDateMatch = payload.documentDate.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
-  if (documentDateMatch) {
-    return `${documentDateMatch[1]}${documentDateMatch[2]}${documentDateMatch[3]}`;
+  const slashDateMatch = payload["doc date"].match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  if (slashDateMatch) {
+    return `${slashDateMatch[3]}${slashDateMatch[2]}${slashDateMatch[1]}`;
   }
 
-  const titleDate = deriveDatePart(payload.title || "");
-  if (titleDate !== new Date().toISOString().slice(0, 10).replace(/-/g, "")) {
-    return titleDate;
+  const documentDateMatch = payload["doc date"].match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+  if (documentDateMatch) {
+    return `${documentDateMatch[1]}${documentDateMatch[2]}${documentDateMatch[3]}`;
   }
 
   const abstractDate = deriveDatePart(payload.abstractSummary || "");
@@ -111,7 +103,7 @@ const deriveDatePartFromPayload = (payload: IngestOutputPayload) => {
     return abstractDate;
   }
 
-  return deriveDatePart(payload.normalizedText || "");
+  return new Date().toISOString().slice(0, 10).replace(/-/g, "");
 };
 
 const deriveSetNameFromIngestOutput = (payload: IngestOutputPayload) => {
@@ -131,33 +123,22 @@ const parseIngestOutput = (value: string): IngestOutputPayload => {
   if (
     !payload ||
     typeof payload !== "object" ||
-    typeof payload.title !== "string" ||
+    typeof payload["doc date"] !== "string" ||
     typeof payload.issuer_name !== "string" ||
     typeof payload.subject_category !== "string" ||
     typeof payload.doc_class !== "string" ||
-    typeof payload.action_in_verb !== "string" ||
-    typeof payload.normalizedText !== "string"
+    typeof payload.action_in_verb !== "string"
   ) {
     throw new Error("Invalid ingest-image-output.json payload.");
   }
 
   return {
-    documentDate: typeof payload.documentDate === "string" ? payload.documentDate : "",
-    title: payload.title,
+    "doc date": payload["doc date"],
     issuer_name: payload.issuer_name,
     subject_category: payload.subject_category,
     doc_class: payload.doc_class,
     action_in_verb: payload.action_in_verb,
     abstractSummary: typeof payload.abstractSummary === "string" ? payload.abstractSummary : "",
-    normalizedText: payload.normalizedText,
-    warnings: Array.isArray(payload.warnings)
-      ? payload.warnings.filter((value): value is string => typeof value === "string")
-      : [],
-    stats: {
-      sectionCount: Number(payload.stats?.sectionCount ?? 0),
-      pageCount: Number(payload.stats?.pageCount ?? 0),
-      characterCount: Number(payload.stats?.characterCount ?? payload.normalizedText.length),
-    },
   };
 };
 
@@ -177,21 +158,11 @@ function buildMarkdown(params: {
   });
 
   const imageSection = images.map((image) => `![${image.alt}](${image.path})`).join("\n");
-  const rawText = ingestOutput.normalizedText
-    .replace(/\r/g, "")
-    .replace(/^#\s+.*$/m, "")
-    .replace(/^##\s+Meta\s*$/im, "")
-    .replace(/^-+\s*issuer_name\s*:.*$/gim, "")
-    .replace(/^-+\s*subject_category\s*:.*$/gim, "")
-    .replace(/^-+\s*doc_class\s*:.*$/gim, "")
-    .replace(/^-+\s*action_in_verb\s*:.*$/gim, "")
-    .trim();
-
-  return `# ${ingestOutput.title}
+  return `# ${ingestOutput.doc_class}
 
 ## Meta
 
-- document_date: ${ingestOutput.documentDate}
+- doc_date: ${ingestOutput["doc date"]}
 - issuer_name: ${ingestOutput.issuer_name}
 - subject_category: ${ingestOutput.subject_category}
 - doc_class: ${ingestOutput.doc_class}
@@ -200,9 +171,9 @@ function buildMarkdown(params: {
 
 ---
 
-## Raw Text
+## Summary
 
-${rawText}
+${ingestOutput.abstractSummary}
 
 ## JSON Reference
 

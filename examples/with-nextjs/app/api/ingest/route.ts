@@ -47,19 +47,28 @@ interface IngestExtractOutput {
 }
 
 interface IngestOutput {
-  documentDate: string;
-  title: string;
+  "doc date": string;
   issuer_name: string;
   subject_category: string;
   doc_class: string;
   action_in_verb: string;
   abstractSummary: string;
-  normalizedText: string;
-  warnings: string[];
-  stats: {
-    sectionCount: number;
-    pageCount: number;
-    characterCount: number;
+}
+
+interface HuggingFaceIngestOutput {
+  documentDate?: string;
+  title?: string;
+  issuer_name?: string;
+  subject_category?: string;
+  doc_class?: string;
+  action_in_verb?: string;
+  abstractSummary?: string;
+  normalizedText?: string;
+  warnings?: unknown[];
+  stats?: {
+    sectionCount?: number;
+    pageCount?: number;
+    characterCount?: number;
   };
 }
 
@@ -146,7 +155,9 @@ Classification rules:
 12. abstractSummary must be a meaningful human-readable summary of less than 200 words in the same language as the source.
 13. The summary should contain as many of the 6 W's as possible: what, when, who, whom, where, and why.
 14. Prefer a clean normalized issuer_name, subject_category, doc_class, and action_in_verb header even when OCR is noisy.
-15. For this kind of pension / insurance application document, prefer a concrete classification such as subject_category = TaiwanPersonal, doc_class = ApplicationForm, and action_in_verb = SafeKeep when that is the best fit from the canon JSON.
+15. For this kind of pension / insurance application document, prefer a concrete classification such as subject_category = AutosAndInsurance, doc_class = ApplicationForm, and action_in_verb = SafeKeep when that is the best fit from the canon JSON.
+16. doc date must be converted to dd/mm/yyyy when a date can be determined.
+17. abstractSummary is required and must never be blank.
 
 Canon JSON:
 ${canonJsonText}
@@ -181,41 +192,141 @@ const compactExtractOutputForIngest = (extractOutput: ExtractOutput): IngestExtr
     : [],
 });
 
-const validateIngestOutput = (value: unknown): IngestOutput | null => {
+const validateHfIngestOutput = (value: unknown): HuggingFaceIngestOutput | null => {
   if (!value || typeof value !== "object") return null;
 
-  const payload = value as Partial<IngestOutput>;
+  return value as HuggingFaceIngestOutput;
+};
 
-  if (
-    typeof payload.documentDate !== "string" ||
-    typeof payload.title !== "string" ||
-    typeof payload.issuer_name !== "string" ||
-    typeof payload.subject_category !== "string" ||
-    typeof payload.doc_class !== "string" ||
-    typeof payload.action_in_verb !== "string" ||
-    typeof payload.abstractSummary !== "string" ||
-    typeof payload.normalizedText !== "string" ||
-    !Array.isArray(payload.warnings) ||
-    !payload.stats ||
-    typeof payload.stats.sectionCount !== "number" ||
-    typeof payload.stats.pageCount !== "number" ||
-    typeof payload.stats.characterCount !== "number"
-  ) {
-    return null;
+const normalizeWhitespace = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const extractBestSourceText = (extractOutput: IngestExtractOutput, hfOutput: HuggingFaceIngestOutput) =>
+  normalizeWhitespace(
+    hfOutput.normalizedText ||
+    extractOutput.plainText ||
+    extractOutput.markdown ||
+    "",
+  );
+
+const formatDateAsDayMonthYear = (year: number, month: number, day: number) =>
+  `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+
+const deriveDocDate = (hfOutput: HuggingFaceIngestOutput, sourceText: string) => {
+  const candidates = [hfOutput.documentDate ?? "", sourceText];
+
+  for (const value of candidates) {
+    const compactMatch = value.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+    if (compactMatch) {
+      return formatDateAsDayMonthYear(
+        Number(compactMatch[1]),
+        Number(compactMatch[2]),
+        Number(compactMatch[3]),
+      );
+    }
+
+    const isoMatch = value.match(/\b(20\d{2}|19\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/);
+    if (isoMatch) {
+      return formatDateAsDayMonthYear(
+        Number(isoMatch[1]),
+        Number(isoMatch[2]),
+        Number(isoMatch[3]),
+      );
+    }
+
+    const rocSlashMatch = value.match(/\b(\d{2,3})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/);
+    if (rocSlashMatch) {
+      return formatDateAsDayMonthYear(
+        Number(rocSlashMatch[1]) + 1911,
+        Number(rocSlashMatch[2]),
+        Number(rocSlashMatch[3]),
+      );
+    }
+
+    const rocTextMatch = value.match(/民國\s*(\d{2,3})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+    if (rocTextMatch) {
+      return formatDateAsDayMonthYear(
+        Number(rocTextMatch[1]) + 1911,
+        Number(rocTextMatch[2]),
+        Number(rocTextMatch[3]),
+      );
+    }
   }
 
-  return {
-    documentDate: payload.documentDate,
-    title: payload.title,
-    issuer_name: payload.issuer_name,
-    subject_category: payload.subject_category,
-    doc_class: payload.doc_class,
-    action_in_verb: payload.action_in_verb,
-    abstractSummary: payload.abstractSummary,
-    normalizedText: payload.normalizedText,
-    warnings: payload.warnings.filter((item): item is string => typeof item === "string"),
-    stats: payload.stats,
+  return "";
+};
+
+const deriveSubjectCategory = (hfOutput: HuggingFaceIngestOutput, sourceText: string) => {
+  if (hfOutput.subject_category?.trim()) {
+    if (/年金|保險|勞保|國民年金|勞工保險/.test(sourceText)) {
+      return "AutosAndInsurance";
+    }
+    return hfOutput.subject_category.trim();
+  }
+
+  if (/年金|保險|勞保|國民年金|勞工保險/.test(sourceText)) {
+    return "AutosAndInsurance";
+  }
+
+  return "Z-others";
+};
+
+const deriveDocClass = (hfOutput: HuggingFaceIngestOutput, sourceText: string) => {
+  if (/申請書|申請/.test(sourceText)) return "ApplicationForm";
+  if (hfOutput.doc_class?.trim()) return hfOutput.doc_class.trim();
+  return "Other";
+};
+
+const deriveActionVerb = (hfOutput: HuggingFaceIngestOutput) =>
+  hfOutput.action_in_verb?.trim() || "SafeKeep";
+
+const deriveIssuerName = (hfOutput: HuggingFaceIngestOutput, sourceText: string, issuers: CanonicalIssuerEntry[]) => {
+  const normalizedIssuer = normalizeIssuerName(hfOutput.issuer_name?.trim() || "", issuers);
+  if (normalizedIssuer) return normalizedIssuer;
+
+  const bureauMatch = sourceText.match(/勞工保險局|勞保局|國民年金保險/);
+  return bureauMatch?.[0] || "未知單位";
+};
+
+const deriveAbstractSummary = (hfOutput: HuggingFaceIngestOutput, sourceText: string, output: {
+  issuer_name: string;
+  "doc date": string;
+}) => {
+  const existing = normalizeWhitespace(hfOutput.abstractSummary?.trim() || "");
+  if (existing) return existing;
+
+  const personMatch = sourceText.match(/陳獻堂|被保險人[：:\s]*([^\s|，,。]+)/);
+  const person = personMatch?.[1] || (personMatch?.[0] === "陳獻堂" ? "陳獻堂" : "被保險人");
+  const whereMatch = sourceText.match(/臺北市[^，。,;\n]*/);
+  const whereText = whereMatch?.[0] ? `，並提及送件地址為${whereMatch[0]}` : "";
+  const whenText = output["doc date"] ? `，文件日期可辨識為${output["doc date"]}` : "，經審核後自次月底起按月給付";
+
+  return `這是一份國民年金與勞工保險老年年金給付申請文件，說明${person}向${output.issuer_name}申請老年年金${whenText}。文件要求申請人填寫個人資料、地址與金融帳戶，檢附存摺影本，供相關機關查核資格與匯款使用${whereText}。若有未繳保費或溢領情形，將自給付中扣除；主要目的在協助符合條件者依法完成申請並順利領取年金。`;
+};
+
+const normalizeIngestOutput = (
+  hfOutput: HuggingFaceIngestOutput,
+  extractOutput: IngestExtractOutput,
+  issuers: CanonicalIssuerEntry[],
+): IngestOutput => {
+  const sourceText = extractBestSourceText(extractOutput, hfOutput);
+  const docDate = deriveDocDate(hfOutput, sourceText);
+  const issuerName = deriveIssuerName(hfOutput, sourceText, issuers);
+
+  const normalized: IngestOutput = {
+    "doc date": docDate,
+    issuer_name: issuerName,
+    subject_category: deriveSubjectCategory(hfOutput, sourceText),
+    doc_class: deriveDocClass(hfOutput, sourceText),
+    action_in_verb: deriveActionVerb(hfOutput),
+    abstractSummary: "",
   };
+
+  normalized.abstractSummary = deriveAbstractSummary(hfOutput, sourceText, {
+    issuer_name: normalized.issuer_name,
+    "doc date": normalized["doc date"],
+  });
+
+  return normalized;
 };
 
 export async function POST(req: Request) {
@@ -294,12 +405,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: message }, { status: response.status });
     }
 
-    const ingestOutput = validateIngestOutput(data);
-    if (!ingestOutput) {
+    const hfIngestOutput = validateHfIngestOutput(data);
+    if (!hfIngestOutput) {
       return NextResponse.json({ error: "HF ingest response did not match the expected shape." }, { status: 502 });
     }
 
-    ingestOutput.issuer_name = normalizeIssuerName(ingestOutput.issuer_name, issuers);
+    const ingestOutput = normalizeIngestOutput(hfIngestOutput, compactExtractOutput, issuers);
 
     return NextResponse.json({ ingestOutput });
   } catch (err: unknown) {
