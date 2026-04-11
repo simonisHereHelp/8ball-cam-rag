@@ -226,6 +226,14 @@ export const useImageCaptureState = (
 
   const selectSubfolder = useCallback((subfolder: SubfolderOption) => {
     setSelectedSubfolder(subfolder);
+    setIngestOutput((current) =>
+      current
+        ? {
+            ...current,
+            subject_category: subfolder.topic,
+          }
+        : current,
+    );
   }, []);
 
   const buildEditedExtractOutput = useCallback((): ExtractOutput | null => {
@@ -263,13 +271,15 @@ export const useImageCaptureState = (
 
   const selectCanon = useCallback((canon: IssuerCanonEntry) => {
     setSelectedCanon(canon);
-    const nextSummary = applyCanonToSummary({
-      canon,
-      currentSummary: editableSummary,
-      draftSummary,
-    });
-    handleEditableSummaryChange(nextSummary);
-  }, [draftSummary, editableSummary, handleEditableSummaryChange]);
+    setIngestOutput((current) =>
+      current
+        ? {
+            ...current,
+            issuer_name: canon.master,
+          }
+        : current,
+    );
+  }, []);
 
   // Auto-refresh canons when gallery opens
   useEffect(() => {
@@ -327,6 +337,20 @@ export const useImageCaptureState = (
         throw new Error("Ingest endpoint returned an empty response.");
       }
 
+      if (selectedCanon) {
+        resolvedOutput = {
+          ...resolvedOutput,
+          issuer_name: selectedCanon.master,
+        };
+      }
+
+      if (selectedSubfolder) {
+        resolvedOutput = {
+          ...resolvedOutput,
+          subject_category: selectedSubfolder.topic,
+        };
+      }
+
       setIngestOutput(resolvedOutput);
       playSuccessChime();
     } catch (err) {
@@ -335,7 +359,7 @@ export const useImageCaptureState = (
     } finally {
       setIsIngesting(false);
     }
-  }, [buildEditedExtractOutput, extractOutput, isIngesting]);
+  }, [buildEditedExtractOutput, extractOutput, isIngesting, selectedCanon, selectedSubfolder]);
 
   const handleSaveImages = useCallback(async () => {
     if (!session || isSaving) return;

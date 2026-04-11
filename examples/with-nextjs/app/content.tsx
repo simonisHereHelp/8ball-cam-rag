@@ -72,26 +72,26 @@ function Content() {
             <Camera className="w-8 h-8 text-blue-600 dark:text-blue-400" />
           </div>
           <h1 className="text-4xl font-bold text-slate-800 dark:text-slate-100 mb-4">
-            文件狗 DocuSniff
+            Image-2-DocFiles (RAG indexed)
           </h1>
           <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Google Login(登錄): {session ? "✓" : "❌"}
+            Google Login: {session ? "Yes" : "No"}
           </p>
-            {!session ? (
-              <Button
-                onClick={() => signIn("google")}
-                className="app-button mt-4"
-              >
-                <span className="app-button-label">Login</span>
-              </Button>
-            ) : (
-              <Button
-                onClick={() => signOut()}
-                className="app-button mt-4"
-              >
-                <span className="app-button-label">Logout</span>
-              </Button>
-            )}
+          {!session ? (
+            <Button
+              onClick={() => signIn("google")}
+              className="app-button mt-4"
+            >
+              <span className="app-button-label">Login</span>
+            </Button>
+          ) : (
+            <Button
+              onClick={() => signOut()}
+              className="app-button mt-4"
+            >
+              <span className="app-button-label">Logout</span>
+            </Button>
+          )}
         </div>
 
         {/* Main Content */}
